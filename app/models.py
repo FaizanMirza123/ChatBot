@@ -8,8 +8,7 @@ class Assistants(Base):
     __tablename__="Assistants"
     id:Mapped[int]=mapped_column(Integer, primary_key=True)
     name: Mapped[str] =mapped_column(String(120),unique=True,nullable=False)
-    
-    open_ai_assistant_id: Mapped[str]=mapped_column(String(120),unique=True,nullable=False)
+
 
 class User(Base):
     __tablename__="users"
