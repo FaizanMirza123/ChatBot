@@ -1,0 +1,368 @@
+from fastapi import FastAPI, Depends, HTTPException
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy.orm import Session
+from openai import OpenAI
+from config import settings
+from db import get_db
+from models import Prompt
+from schemas import ChatIn, ChatOut, SystemPromptIn, SystemPromptOut
+
+app = FastAPI()
+
+client = OpenAI(api_key=settings.OPENAI_API_KEY)
+
+
+DEFAULT_SYSTEM_PROMPT = "You are a helpful AI assistant. Please provide accurate, helpful, and friendly responses to user questions."
+
+
+in_memory_system_prompt = DEFAULT_SYSTEM_PROMPT
+use_database = True
+
+def get_current_system_prompt(db: Session) -> str:
+    """Get the current system prompt from database or return default"""
+    prompt = db.query(Prompt).filter(Prompt.is_default == True).first()
+    if prompt:
+        return prompt.text
+    return DEFAULT_SYSTEM_PROMPT
+
+@app.post("/chat", response_model=ChatOut)
+async def chat(chat_data: ChatIn, db: Session = Depends(get_db)):
+    
+    try:
+      
+        system_prompt = get_current_system_prompt(db)
+        
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": chat_data.message}
+            ]
+        )
+        
+        reply = response.choices[0].message.content
+        
+        return ChatOut(
+            reply=reply,
+            used_faq=False,
+            run_id=response.id
+        )
+        
+    except Exception as e:
+        return ChatOut(
+            reply=f"Error: {str(e)}",
+            used_faq=False,
+            run_id=None
+        )
+
+@app.get("/system-prompt", response_model=SystemPromptOut)
+async def get_system_prompt(db: Session = Depends(get_db)):
+    """Get the current system prompt"""
+    prompt = db.query(Prompt).filter(Prompt.is_default == True).first()
+    if prompt:
+        return SystemPromptOut(text=prompt.text, is_custom=True)
+    return SystemPromptOut(text=DEFAULT_SYSTEM_PROMPT, is_custom=False)
+
+@app.post("/system-prompt", response_model=SystemPromptOut)
+async def set_system_prompt(prompt_data: SystemPromptIn, db: Session = Depends(get_db)):
+    """Set a new system prompt"""
+    try:
+        existing_prompt = db.query(Prompt).filter(Prompt.is_default == True).first()
+        if existing_prompt:
+            db.delete(existing_prompt)
+        
+        new_prompt = Prompt(
+            name="Default System Prompt",
+            text=prompt_data.text,
+            is_default=True
+        )
+        db.add(new_prompt)
+        db.commit()
+        
+        return SystemPromptOut(text=prompt_data.text, is_custom=True)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error setting system prompt: {str(e)}")
+
+@app.delete("/system-prompt")
+async def reset_system_prompt(db: Session = Depends(get_db)):
+    """Reset to default system prompt"""
+    try:
+        existing_prompt = db.query(Prompt).filter(Prompt.is_default == True).first()
+        if existing_prompt:
+            db.delete(existing_prompt)
+            db.commit()
+        
+        return {"message": "System prompt reset to default"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error resetting system prompt: {str(e)}")
+
+@app.get("/", response_class=HTMLResponse)
+async def get_chat_interface():
+    """Serve the chat interface with system prompt configuration"""
+    html_content = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatBot with Custom System Prompt</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: #fafafa;
+        }
+        .section h2 {
+            margin-top: 0;
+            color: #555;
+        }
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            resize: vertical;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button.reset {
+            background-color: #6c757d;
+        }
+        button.reset:hover {
+            background-color: #545b62;
+        }
+        .chat-container {
+            margin-top: 20px;
+        }
+        .messages {
+            height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 8px;
+            border-radius: 4px;
+        }
+        .message.user {
+            background-color: #e3f2fd;
+            text-align: right;
+        }
+        .message.assistant {
+            background-color: #f1f8e9;
+        }
+        .input-group {
+            display: flex;
+            gap: 10px;
+        }
+        .input-group input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            display: none;
+        }
+        .status.success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1> ChatBot with Custom System Prompt</h1>
+        
+        <div class="section">
+            <h2>System Prompt Configuration</h2>
+            <textarea id="systemPrompt" rows="4" placeholder="Enter your system prompt here..."></textarea>
+            <br><br>
+            <button onclick="setSystemPrompt()">Set System Prompt</button>
+            <button onclick="resetSystemPrompt()" class="reset">Reset to Default</button>
+            <button onclick="loadCurrentPrompt()" style="background-color: #28a745;">Load Current</button>
+            
+            <div id="status" class="status"></div>
+        </div>
+        
+        <div class="section">
+            <h2>Chat</h2>
+            <div class="messages" id="messages"></div>
+            <div class="input-group">
+                <input type="text" id="messageInput" placeholder="Type your message..." onkeypress="handleKeyPress(event)">
+                <button onclick="sendMessage()">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const DEFAULT_PROMPT = "You are a helpful AI assistant. Please provide accurate, helpful, and friendly responses to user questions.";
+        
+        async function loadCurrentPrompt() {
+            try {
+                const response = await fetch('/system-prompt');
+                const data = await response.json();
+                document.getElementById('systemPrompt').value = data.text;
+                showStatus('Current system prompt loaded', 'success');
+            } catch (error) {
+                showStatus('Error loading system prompt: ' + error.message, 'error');
+            }
+        }
+        
+        async function setSystemPrompt() {
+            const text = document.getElementById('systemPrompt').value.trim();
+            if (!text) {
+                showStatus('Please enter a system prompt', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/system-prompt', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ text: text })
+                });
+                
+                if (response.ok) {
+                    showStatus('System prompt updated successfully!', 'success');
+                } else {
+                    const error = await response.json();
+                    showStatus('Error: ' + error.detail, 'error');
+                }
+            } catch (error) {
+                showStatus('Error setting system prompt: ' + error.message, 'error');
+            }
+        }
+        
+        async function resetSystemPrompt() {
+            try {
+                const response = await fetch('/system-prompt', {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    document.getElementById('systemPrompt').value = DEFAULT_PROMPT;
+                    showStatus('System prompt reset to default', 'success');
+                } else {
+                    const error = await response.json();
+                    showStatus('Error: ' + error.detail, 'error');
+                }
+            } catch (error) {
+                showStatus('Error resetting system prompt: ' + error.message, 'error');
+            }
+        }
+        
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            if (!message) return;
+            
+            addMessage('user', message);
+            input.value = '';
+            
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ 
+                        session_id: 1, 
+                        message: message 
+                    })
+                });
+                
+                const data = await response.json();
+                addMessage('assistant', data.reply);
+            } catch (error) {
+                addMessage('assistant', 'Error: ' + error.message);
+            }
+        }
+        
+        function addMessage(role, content) {
+            const messages = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+            messageDiv.textContent = content;
+            messages.appendChild(messageDiv);
+            messages.scrollTop = messages.scrollHeight;
+        }
+        
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+        
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+            status.style.display = 'block';
+            setTimeout(() => {
+                status.style.display = 'none';
+            }, 3000);
+        }
+        
+        // Load current prompt on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadCurrentPrompt();
+        });
+    </script>
+</body>
+</html>
+    """
+    return html_content
+
+@app.get("/api")
+async def root():
+    return {"message": "ChatBot API is running"}
