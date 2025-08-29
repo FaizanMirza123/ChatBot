@@ -1,18 +1,32 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from openai import OpenAI
 from config import settings
 from db import get_db
-from models import Prompt
-from schemas import ChatIn, ChatOut, SystemPromptIn, SystemPromptOut
+from models import Prompt, KnowledgeDocument
+from schemas import ChatIn, ChatOut, SystemPromptIn, SystemPromptOut, DocumentUploadOut, DocumentListOut, DocumentDeleteOut
+from services.rag_service import RAGService
+import os
+import shutil
+from pathlib import Path
 
 app = FastAPI()
 
 client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
 
+app = FastAPI()
+
+client = OpenAI(api_key=settings.OPENAI_API_KEY)
+rag_service = RAGService()
+
+# Create uploads directory
+UPLOAD_DIR = Path("uploads")
+UPLOAD_DIR.mkdir(exist_ok=True)
+
+# Default system prompt
 DEFAULT_SYSTEM_PROMPT = "You are a helpful AI assistant. Please provide accurate, helpful, and friendly responses to user questions."
 
 
@@ -33,20 +47,13 @@ async def chat(chat_data: ChatIn, db: Session = Depends(get_db)):
       
         system_prompt = get_current_system_prompt(db)
         
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": chat_data.message}
-            ]
-        )
-        
-        reply = response.choices[0].message.content
+        # Use RAG service to generate response
+        reply, used_kb = rag_service.generate_rag_response(chat_data.message, system_prompt)
         
         return ChatOut(
             reply=reply,
-            used_faq=False,
-            run_id=response.id
+            used_faq=used_kb,  # Repurpose this field to indicate if KB was used
+            run_id="rag-response"
         )
         
     except Exception as e:
@@ -98,6 +105,68 @@ async def reset_system_prompt(db: Session = Depends(get_db)):
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error resetting system prompt: {str(e)}")
+
+@app.post("/documents/upload", response_model=DocumentUploadOut)
+async def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Upload and process a document for the knowledge base"""
+    try:
+        # Validate file type
+        allowed_extensions = {'.pdf', '.docx', '.txt'}
+        file_extension = Path(file.filename).suffix.lower()
+        if file_extension not in allowed_extensions:
+            raise HTTPException(status_code=400, detail=f"Unsupported file type. Allowed: {', '.join(allowed_extensions)}")
+        
+        # Save uploaded file
+        file_path = UPLOAD_DIR / file.filename
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        # Process document with RAG service
+        document = rag_service.process_document(db, str(file_path), file.filename)
+        
+        return DocumentUploadOut(
+            id=document.id,
+            filename=document.filename,
+            document_type=document.document_type,
+            upload_date=document.upload_date.isoformat(),
+            processed=document.processed,
+            chunk_count=document.chunk_count
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing document: {str(e)}")
+
+@app.get("/documents", response_model=DocumentListOut)
+async def list_documents(db: Session = Depends(get_db)):
+    """List all documents in the knowledge base"""
+    try:
+        documents = rag_service.list_documents(db)
+        doc_list = [
+            DocumentUploadOut(
+                id=doc.id,
+                filename=doc.filename,
+                document_type=doc.document_type,
+                upload_date=doc.upload_date.isoformat(),
+                processed=doc.processed,
+                chunk_count=doc.chunk_count
+            )
+            for doc in documents
+        ]
+        return DocumentListOut(documents=doc_list)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error listing documents: {str(e)}")
+
+@app.delete("/documents/{document_id}", response_model=DocumentDeleteOut)
+async def delete_document(document_id: int, db: Session = Depends(get_db)):
+    """Delete a document from the knowledge base"""
+    try:
+        success = rag_service.delete_document(db, document_id)
+        if success:
+            return DocumentDeleteOut(message="Document deleted successfully", success=True)
+        else:
+            raise HTTPException(status_code=404, detail="Document not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting document: {str(e)}")
 
 @app.get("/", response_class=HTMLResponse)
 async def get_chat_interface():
@@ -233,6 +302,20 @@ async def get_chat_interface():
         </div>
         
         <div class="section">
+            <h2>📚 Knowledge Base Management</h2>
+            <div style="margin-bottom: 15px;">
+                <input type="file" id="documentFile" accept=".pdf,.docx,.txt" style="margin-bottom: 10px;">
+                <br>
+                <button onclick="uploadDocument()">Upload Document</button>
+                <button onclick="loadDocuments()" style="background-color: #17a2b8;">Refresh List</button>
+            </div>
+            <div id="documentStatus" class="status"></div>
+            <div id="documentList" style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; margin-top: 10px;">
+                <p>Loading documents...</p>
+            </div>
+        </div>
+        
+        <div class="section">
             <h2>Chat</h2>
             <div class="messages" id="messages"></div>
             <div class="input-group">
@@ -322,7 +405,14 @@ async def get_chat_interface():
                 });
                 
                 const data = await response.json();
-                addMessage('assistant', data.reply);
+                
+                // Add KB indicator if knowledge base was used
+                let reply = data.reply;
+                if (data.used_faq) {
+                    reply = "📚 " + reply;
+                }
+                
+                addMessage('assistant', reply);
             } catch (error) {
                 addMessage('assistant', 'Error: ' + error.message);
             }
@@ -353,9 +443,111 @@ async def get_chat_interface():
             }, 3000);
         }
         
-        // Load current prompt on page load
+        function showDocumentStatus(message, type) {
+            const status = document.getElementById('documentStatus');
+            status.textContent = message;
+            status.className = `status ${type}`;
+            status.style.display = 'block';
+            setTimeout(() => {
+                status.style.display = 'none';
+            }, 3000);
+        }
+        
+        async function uploadDocument() {
+            const fileInput = document.getElementById('documentFile');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                showDocumentStatus('Please select a file to upload', 'error');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            try {
+                showDocumentStatus('Uploading and processing document...', 'success');
+                const response = await fetch('/documents/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showDocumentStatus(`Document "${result.filename}" uploaded successfully! Processed into ${result.chunk_count} chunks.`, 'success');
+                    fileInput.value = ''; // Clear file input
+                    loadDocuments(); // Refresh document list
+                } else {
+                    showDocumentStatus('Error: ' + result.detail, 'error');
+                }
+            } catch (error) {
+                showDocumentStatus('Error uploading document: ' + error.message, 'error');
+            }
+        }
+        
+        async function loadDocuments() {
+            try {
+                const response = await fetch('/documents');
+                const data = await response.json();
+                
+                const documentList = document.getElementById('documentList');
+                
+                if (data.documents.length === 0) {
+                    documentList.innerHTML = '<p>No documents uploaded yet.</p>';
+                    return;
+                }
+                
+                let html = '<h4>Uploaded Documents:</h4>';
+                data.documents.forEach(doc => {
+                    const uploadDate = new Date(doc.upload_date).toLocaleString();
+                    const statusIcon = doc.processed ? '✅' : '⏳';
+                    html += `
+                        <div style="border: 1px solid #ccc; padding: 8px; margin: 5px 0; border-radius: 4px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <strong>${statusIcon} ${doc.filename}</strong><br>
+                                    <small>Type: ${doc.document_type} | Chunks: ${doc.chunk_count} | Uploaded: ${uploadDate}</small>
+                                </div>
+                                <button onclick="deleteDocument(${doc.id}, '${doc.filename}')" style="background-color: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;">Delete</button>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                documentList.innerHTML = html;
+            } catch (error) {
+                document.getElementById('documentList').innerHTML = '<p>Error loading documents: ' + error.message + '</p>';
+            }
+        }
+        
+        async function deleteDocument(docId, filename) {
+            if (!confirm(`Are you sure you want to delete "${filename}"?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/documents/${docId}`, {
+                    method: 'DELETE'
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showDocumentStatus(`Document "${filename}" deleted successfully`, 'success');
+                    loadDocuments(); // Refresh document list
+                } else {
+                    showDocumentStatus('Error: ' + result.detail, 'error');
+                }
+            } catch (error) {
+                showDocumentStatus('Error deleting document: ' + error.message, 'error');
+            }
+        }
+        
+        // Load current prompt and documents on page load
         document.addEventListener('DOMContentLoaded', function() {
             loadCurrentPrompt();
+            loadDocuments();
         });
     </script>
 </body>

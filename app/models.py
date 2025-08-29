@@ -48,16 +48,28 @@ class Prompt(Base):
     text: Mapped[str] = mapped_column(Text)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
 
-class KBFile(Base):
-    __tablename__ = "kb_files"
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    file_id: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
-    filename: Mapped[str] = mapped_column(String(255))
-
 class Form(Base):
     __tablename__ = "forms"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     fields_schema: Mapped[dict] = mapped_column(JSON)
+
+class KnowledgeDocument(Base):
+    __tablename__ = "knowledge_documents"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    filename: Mapped[str] = mapped_column(String(255))
+    file_path: Mapped[str] = mapped_column(String(500))
+    document_type: Mapped[str] = mapped_column(String(50))  # pdf, txt, docx, etc.
+    upload_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    processed: Mapped[bool] = mapped_column(Boolean, default=False)
+    chunk_count: Mapped[int] = mapped_column(Integer, default=0)
+
+class DocumentChunk(Base):
+    __tablename__ = "document_chunks"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("knowledge_documents.id", ondelete="CASCADE"), index=True)
+    chunk_text: Mapped[str] = mapped_column(Text)
+    chunk_index: Mapped[int] = mapped_column(Integer)  # Order of chunk in document
+    vector_id: Mapped[str] = mapped_column(String(255))  # ID in vector database
 
 class FormResponse(Base):
     __tablename__ = "form_responses"

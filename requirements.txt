@@ -4,3 +4,12 @@ sqlalchemy
 pydantic-settings
 python-dotenv
 openai
+python-multipart
+
+# RAG and Vector Database dependencies
+chromadb==0.4.18
+sentence-transformers==2.2.2
+PyPDF2==3.0.1
+python-docx==1.1.0
+tiktoken==0.5.2
+huggingface_hub==0.14.1

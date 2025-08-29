@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, List
 
 class StartSessionIn(BaseModel):
     user_id: int
@@ -37,10 +37,6 @@ class PromptOut(BaseModel):
     text: str
     is_default: bool
 
-class UploadKBOut(BaseModel):
-    file_id: str
-    filename: str
-
 class WidgetConfigOut(BaseModel):
     theme: str = "light"
     position: str = "bottom-right"
@@ -51,3 +47,18 @@ class SystemPromptIn(BaseModel):
 class SystemPromptOut(BaseModel):
     text: str
     is_custom: bool
+
+class DocumentUploadOut(BaseModel):
+    id: int
+    filename: str
+    document_type: str
+    upload_date: str
+    processed: bool
+    chunk_count: int
+
+class DocumentListOut(BaseModel):
+    documents: List[DocumentUploadOut]
+
+class DocumentDeleteOut(BaseModel):
+    message: str
+    success: bool
