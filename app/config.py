@@ -15,6 +15,9 @@ class Settings(BaseSettings):
 
     OPENAI_API_KEY: str
     OPENAI_ASSISTANT_ID: Optional[str] = None
+    
+    # Chat history settings
+    CHAT_HISTORY_MAX_MESSAGES: int = 10  # number of most recent messages to include per session
 
     CORS_ORIGINS: List[str] = Field(default_factory=list)
     model_config = SettingsConfigDict( env_file=str(BASE_DIR / ".env"), case_sensitive=False)

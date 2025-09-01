@@ -1,0 +1,15 @@
+# Heavy, stable dependencies that rarely change
+fastapi
+uvicorn
+sqlalchemy
+pydantic-settings
+python-dotenv
+python-multipart
+
+numpy<2.0.0
+
+# Heavy ML dependencies (install once)
+chromadb==0.4.18
+sentence-transformers==2.2.2
+tiktoken==0.5.2
+huggingface_hub==0.14.1

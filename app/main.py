@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from openai import OpenAI
 from config import settings
 from db import get_db
-from models import Prompt, KnowledgeDocument
+from models import Prompt, KnowledgeDocument, Message
 from schemas import ChatIn, ChatOut, SystemPromptIn, SystemPromptOut, DocumentUploadOut, DocumentListOut, DocumentDeleteOut
 from services.rag_service import RAGService
 import os
@@ -42,26 +42,49 @@ def get_current_system_prompt(db: Session) -> str:
 
 @app.post("/chat", response_model=ChatOut)
 async def chat(chat_data: ChatIn, db: Session = Depends(get_db)):
-    
+    """Chat endpoint with limited message history.
+    - Loads last N messages for the provided session_id (N from settings.CHAT_HISTORY_MAX_MESSAGES)
+    - Persists the new user message and the assistant reply
+    - Passes history to the RAG service for context
+    """
     try:
-      
         system_prompt = get_current_system_prompt(db)
-        
-        # Use RAG service to generate response
-        reply, used_kb = rag_service.generate_rag_response(chat_data.message, system_prompt)
-        
-        return ChatOut(
-            reply=reply,
-            used_faq=used_kb,  # Repurpose this field to indicate if KB was used
-            run_id="rag-response"
+
+        # Fetch limited recent history for this session (excluding current user message)
+        history_limit = settings.CHAT_HISTORY_MAX_MESSAGES
+        prior_msgs = (
+            db.query(Message)
+            .filter(Message.session_id == chat_data.session_id)
+            .order_by(Message.id.desc())
+            .limit(history_limit)
+            .all()
         )
-        
+        # Build OpenAI-formatted history in chronological order
+        history = [
+            {"role": m.role, "content": m.content}
+            for m in reversed(prior_msgs)
+            if m.role in ("user", "assistant")
+        ]
+
+        # Persist the current user message
+        user_msg = Message(session_id=chat_data.session_id, role="user", content=chat_data.message)
+        db.add(user_msg)
+        db.commit()
+        db.refresh(user_msg)
+
+        # Generate response with history
+        reply, used_kb = rag_service.generate_rag_response(chat_data.message, system_prompt, history=history)
+
+        # Persist assistant reply
+        assistant_msg = Message(session_id=chat_data.session_id, role="assistant", content=reply)
+        db.add(assistant_msg)
+        db.commit()
+
+        return ChatOut(reply=reply, used_faq=used_kb, run_id="rag-response")
+
     except Exception as e:
-        return ChatOut(
-            reply=f"Error: {str(e)}",
-            used_faq=False,
-            run_id=None
-        )
+        db.rollback()
+        return ChatOut(reply=f"Error: {str(e)}", used_faq=False, run_id=None)
 
 @app.get("/system-prompt", response_model=SystemPromptOut)
 async def get_system_prompt(db: Session = Depends(get_db)):

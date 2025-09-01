@@ -224,22 +224,24 @@ class RAGService:
         
         return search_results
     
-    def generate_rag_response(self, query: str, system_prompt: str) -> Tuple[str, bool]:
+    def generate_rag_response(self, query: str, system_prompt: str, history: list[dict] | None = None) -> Tuple[str, bool]:
         """
         Generate response using RAG if appropriate, otherwise use regular chat.
         Returns (response, used_kb)
         """
        
         if not self.should_use_knowledge_base(query):
-           
+            # Build message list with optional history
+            messages: list[dict] = [{"role": "system", "content": system_prompt}]
+            if history:
+                messages.extend(history)
+            messages.append({"role": "user", "content": query})
+
             client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 temperature=0.2,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": query}
-                ]
+                messages=messages
             )
             return response.choices[0].message.content, False
         
@@ -247,15 +249,17 @@ class RAGService:
         kb_results = self.search_knowledge_base(query)
         
         if not kb_results:
-            
+            # No KB results, fall back to regular chat with optional history
+            messages: list[dict] = [{"role": "system", "content": system_prompt}]
+            if history:
+                messages.extend(history)
+            messages.append({"role": "user", "content": query})
+
             client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 temperature=0.2,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": query}
-                ]
+                messages=messages
             )
             return response.choices[0].message.content, False
         
@@ -266,15 +270,17 @@ class RAGService:
                 context_parts.append(f"From {metadata['filename']}: {doc_text}")
         
         if not context_parts:
-          
+            # KB wasn't confident, fall back to regular chat with optional history
+            messages: list[dict] = [{"role": "system", "content": system_prompt}]
+            if history:
+                messages.extend(history)
+            messages.append({"role": "user", "content": query})
+
             client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
             response = client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 temperature=0.2,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": query}
-                ]
+                messages=messages
             )
             return response.choices[0].message.content, False
         
@@ -288,14 +294,17 @@ You have access to the following relevant information from the knowledge base:
 
 IMPORTANT: Only use the provided information to answer questions. If the information doesn't contain the answer to the user's question, clearly state that you don't have that specific information in your knowledge base. Do not make up or assume information that isn't explicitly provided. Be accurate and honest about the limitations of the available information."""
         
+        # Use KB context; include optional prior history to preserve continuity
+        messages: list[dict] = [{"role": "system", "content": rag_system_prompt}]
+        if history:
+            messages.extend(history)
+        messages.append({"role": "user", "content": query})
+
         client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             temperature=0.2,
-            messages=[
-                {"role": "system", "content": rag_system_prompt},
-                {"role": "user", "content": query}
-            ]
+            messages=messages
         )
         
         return response.choices[0].message.content, True
