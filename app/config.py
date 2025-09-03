@@ -17,7 +17,12 @@ class Settings(BaseSettings):
     OPENAI_ASSISTANT_ID: Optional[str] = None
     
     # Chat history settings
-    CHAT_HISTORY_MAX_MESSAGES: int = 10  # number of most recent messages to include per session
+    CHAT_HISTORY_MAX_MESSAGES: int = 40  # number of most recent messages to include per session
+
+    # OpenAI generation settings
+    OPENAI_MODEL: str = "gpt-3.5-turbo"
+    OPENAI_TEMPERATURE: float = 0.3
+    OPENAI_MAX_TOKENS: int = 400
 
     CORS_ORIGINS: List[str] = Field(default_factory=list)
     model_config = SettingsConfigDict( env_file=str(BASE_DIR / ".env"), case_sensitive=False)

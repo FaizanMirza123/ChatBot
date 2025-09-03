@@ -11,7 +11,10 @@ from sentence_transformers import SentenceTransformer
 from sqlalchemy.orm import Session
 import PyPDF2
 from docx import Document
-import tiktoken
+try:
+    import tiktoken  # optional; may require network on first use
+except Exception:  # pragma: no cover
+    tiktoken = None
 
 from models import KnowledgeDocument, DocumentChunk
 from config import settings
@@ -32,9 +35,14 @@ class RAGService:
         
         
         self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-        
-        
-        self.tokenizer = tiktoken.encoding_for_model("gpt-3.5-turbo")
+        # Optional tokenizer: fall back to word-count if unavailable or offline
+        self.tokenizer = None
+        if tiktoken is not None:
+            try:
+                # Prefer a generic encoding; may still try to fetch on first run
+                self.tokenizer = tiktoken.get_encoding("cl100k_base")
+            except Exception:
+                self.tokenizer = None
         
         
         self.kb_triggers = [
@@ -116,22 +124,31 @@ class RAGService:
         chunks = []
         current_chunk = ""
         
+        def token_len(s: str) -> int:
+            if self.tokenizer is not None:
+                try:
+                    return len(self.tokenizer.encode(s))
+                except Exception:
+                    pass
+            # Fallback: approximate tokens by words
+            return max(1, len(s.split()))
+        
         for sentence in sentences:
             sentence = sentence.strip()
             if not sentence:
                 continue
                 
-            
             test_chunk = current_chunk + " " + sentence if current_chunk else sentence
-            if len(self.tokenizer.encode(test_chunk)) > max_tokens:
+            if token_len(test_chunk) > max_tokens:
                 if current_chunk:
                     chunks.append(current_chunk.strip())
                     current_chunk = sentence
                 else:
                     
                     words = sentence.split()
-                    for i in range(0, len(words), max_tokens // 4): 
-                        chunk_words = words[i:i + max_tokens // 4]
+                    step = max(1, max_tokens // 4)
+                    for i in range(0, len(words), step): 
+                        chunk_words = words[i:i + step]
                         chunks.append(" ".join(chunk_words))
             else:
                 current_chunk = test_chunk
@@ -239,8 +256,9 @@ class RAGService:
 
             client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
             response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                temperature=0.2,
+                model=settings.OPENAI_MODEL,
+                temperature=settings.OPENAI_TEMPERATURE,
+                max_tokens=settings.OPENAI_MAX_TOKENS,
                 messages=messages
             )
             return response.choices[0].message.content, False
@@ -257,8 +275,9 @@ class RAGService:
 
             client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
             response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                temperature=0.2,
+                model=settings.OPENAI_MODEL,
+                temperature=settings.OPENAI_TEMPERATURE,
+                max_tokens=settings.OPENAI_MAX_TOKENS,
                 messages=messages
             )
             return response.choices[0].message.content, False
@@ -278,8 +297,9 @@ class RAGService:
 
             client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
             response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                temperature=0.2,
+                model=settings.OPENAI_MODEL,
+                temperature=settings.OPENAI_TEMPERATURE,
+                max_tokens=settings.OPENAI_MAX_TOKENS,
                 messages=messages
             )
             return response.choices[0].message.content, False
@@ -302,8 +322,9 @@ IMPORTANT: Only use the provided information to answer questions. If the informa
 
         client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
         response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            temperature=0.2,
+            model=settings.OPENAI_MODEL,
+            temperature=settings.OPENAI_TEMPERATURE,
+            max_tokens=settings.OPENAI_MAX_TOKENS,
             messages=messages
         )
         

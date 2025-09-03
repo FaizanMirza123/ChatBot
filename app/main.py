@@ -13,12 +13,6 @@ import shutil
 from pathlib import Path
 
 app = FastAPI()
-
-client = OpenAI(api_key=settings.OPENAI_API_KEY)
-
-
-app = FastAPI()
-
 client = OpenAI(api_key=settings.OPENAI_API_KEY)
 rag_service = RAGService()
 
@@ -26,8 +20,17 @@ rag_service = RAGService()
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
-# Default system prompt
-DEFAULT_SYSTEM_PROMPT = "You are a helpful AI assistant. Please provide accurate, helpful, and friendly responses to user questions."
+# Default system prompt (KB-first, no guessing, session-aware)
+DEFAULT_SYSTEM_PROMPT = (
+    "You are a helpful AI assistant for Dipietro & Associates. Be accurate, concise, and friendly.\n"
+    "Policy: Prefer answers grounded in the provided Knowledge Base (KB).\n"
+    "When KB context is provided, base your answer ONLY on that context. Do not add external facts.\n"
+    "If the KB does not contain the needed information, clearly say you don't have that specific info in the KB,\n"
+    "and suggest what the user can do next (e.g., provide more details, check the official site, or contact support).\n"
+    "Never guess or fabricate details such as timings, prices, inventory, policies, or personal information.\n"
+    "Within each chat session, remember and reuse user-provided facts and preferences, but only as they were stated in THIS session.\n"
+    "Ask brief clarifying questions when the request is ambiguous."
+)
 
 
 in_memory_system_prompt = DEFAULT_SYSTEM_PROMPT
@@ -101,7 +104,7 @@ async def set_system_prompt(prompt_data: SystemPromptIn, db: Session = Depends(g
         existing_prompt = db.query(Prompt).filter(Prompt.is_default == True).first()
         if existing_prompt:
             db.delete(existing_prompt)
-        
+
         new_prompt = Prompt(
             name="Default System Prompt",
             text=prompt_data.text,
@@ -109,7 +112,7 @@ async def set_system_prompt(prompt_data: SystemPromptIn, db: Session = Depends(g
         )
         db.add(new_prompt)
         db.commit()
-        
+
         return SystemPromptOut(text=prompt_data.text, is_custom=True)
     except Exception as e:
         db.rollback()
@@ -273,6 +276,7 @@ async def get_chat_interface():
             margin-bottom: 10px;
             padding: 8px;
             border-radius: 4px;
+            line-height: 1.35;
         }
         .message.user {
             background-color: #e3f2fd;
@@ -281,6 +285,18 @@ async def get_chat_interface():
         .message.assistant {
             background-color: #f1f8e9;
         }
+        .message.assistant p { margin: 0.35em 0; }
+        .message.assistant ul, .message.assistant ol { margin: 0.35em 0 0.35em 1.2em; }
+        .message.assistant pre {
+            background: #f6f8fa;
+            padding: 8px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .message.assistant code { background: #f6f8fa; padding: 0 3px; border-radius: 3px; }
+        .message.assistant h1, .message.assistant h2, .message.assistant h3 { margin: 0.4em 0 0.3em; }
+        .message.assistant a { color: #0366d6; text-decoration: none; }
+        .message.assistant a:hover { text-decoration: underline; }
         .input-group {
             display: flex;
             gap: 10px;
@@ -308,6 +324,8 @@ async def get_chat_interface():
             border: 1px solid #f5c6cb;
         }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -441,11 +459,32 @@ async def get_chat_interface():
             }
         }
         
+        function renderMarkdownToHtml(mdText) {
+            try {
+                if (window.marked && window.DOMPurify) {
+                    const raw = marked.parse(mdText, { breaks: true });
+                    // Sanitize and allow basic formatting + links
+                    return DOMPurify.sanitize(raw, {
+                        ALLOWED_TAGS: ['p','strong','em','ul','ol','li','code','pre','h1','h2','h3','blockquote','a','br'],
+                        ALLOWED_ATTR: ['href','title','target','rel']
+                    });
+                }
+            } catch (e) {
+                // fall through to plain text
+            }
+            // Fallback: escape as plain text
+            const div = document.createElement('div');
+            div.textContent = mdText;
+            return div.innerHTML;
+        }
+
         function addMessage(role, content) {
             const messages = document.getElementById('messages');
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${role}`;
-            messageDiv.textContent = content;
+            // Render Markdown safely for assistant; keep user text as-is but still sanitized
+            const html = renderMarkdownToHtml(content);
+            messageDiv.innerHTML = html;
             messages.appendChild(messageDiv);
             messages.scrollTop = messages.scrollHeight;
         }
