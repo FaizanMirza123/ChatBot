@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from openai import OpenAI
 from config import settings
 from db import get_db
-from models import Prompt, KnowledgeDocument, Message
+from models import Prompt, KnowledgeDocument, Message, User, Session as ChatSession
 from schemas import ChatIn, ChatOut, SystemPromptIn, SystemPromptOut, DocumentUploadOut, DocumentListOut, DocumentDeleteOut
 from services.rag_service import RAGService
 import os
@@ -42,6 +42,92 @@ def get_current_system_prompt(db: Session) -> str:
     if prompt:
         return prompt.text
     return DEFAULT_SYSTEM_PROMPT
+
+# Sessions API
+@app.post("/sessions")
+async def start_session(payload: dict, db: Session = Depends(get_db)):
+    """Create a new chat session for a user. Payload expects { user_id:int, session_metadata?:dict }"""
+    try:
+        user_id = int(payload.get("user_id"))
+        meta = payload.get("session_metadata") or {}
+
+        # Ensure user exists (create if needed)
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            user = User(id=user_id, external_user_id=str(user_id))
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+
+        new_session = ChatSession(user_id=user.id, session_metadata=meta)
+        db.add(new_session)
+        db.commit()
+        db.refresh(new_session)
+        return {"session_id": new_session.id}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error starting session: {str(e)}")
+
+@app.get("/sessions/{session_id}/messages")
+async def get_session_messages(session_id: int, db: Session = Depends(get_db)):
+    """Return last N messages from a session (N = CHAT_HISTORY_MAX_MESSAGES)."""
+    try:
+        msgs = (
+            db.query(Message)
+            .filter(Message.session_id == session_id)
+            .order_by(Message.id.desc())
+            .limit(settings.CHAT_HISTORY_MAX_MESSAGES)
+            .all()
+        )
+        return {
+            "session_id": session_id,
+            "messages": [
+                {"id": m.id, "role": m.role, "content": m.content, "created_at": m.created_at.isoformat()}
+                for m in reversed(msgs)
+            ],
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching messages: {str(e)}")
+
+@app.delete("/sessions/{session_id}")
+async def close_session(session_id: int, db: Session = Depends(get_db)):
+    """Close a session (soft close)."""
+    try:
+        sess = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+        if not sess:
+            raise HTTPException(status_code=404, detail="Session not found")
+        sess.status = "closed"
+        db.commit()
+        return {"message": "Session closed"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error closing session: {str(e)}")
+
+@app.get("/sessions")
+async def list_sessions(user_id: int, db: Session = Depends(get_db)):
+    """List recent sessions for a user (most recent first)."""
+    try:
+        sessions = (
+            db.query(ChatSession)
+            .filter(ChatSession.user_id == user_id)
+            .order_by(ChatSession.id.desc())
+            .limit(50)
+            .all()
+        )
+        return {
+            "sessions": [
+                {
+                    "id": s.id,
+                    "status": s.status,
+                    "created_at": s.created_at.isoformat() if s.created_at else None,
+                }
+                for s in sessions
+            ]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error listing sessions: {str(e)}")
 
 @app.post("/chat", response_model=ChatOut)
 async def chat(chat_data: ChatIn, db: Session = Depends(get_db)):
@@ -358,6 +444,15 @@ async def get_chat_interface():
         
         <div class="section">
             <h2>Chat</h2>
+            <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom:8px;">
+                <div>
+                    <small>Session: <span id="sessionIdLabel">-</span></small>
+                </div>
+                <div>
+                    <button onclick="startSession()" style="background-color:#6f42c1">New chat</button>
+                </div>
+            </div>
+            <div id="sessionsBar" style="margin-bottom:8px; display:flex; flex-wrap: wrap; gap:6px;"></div>
             <div class="messages" id="messages"></div>
             <div class="input-group">
                 <input type="text" id="messageInput" placeholder="Type your message..." onkeypress="handleKeyPress(event)">
@@ -367,7 +462,8 @@ async def get_chat_interface():
     </div>
 
     <script>
-        const DEFAULT_PROMPT = "You are a helpful AI assistant. Please provide accurate, helpful, and friendly responses to user questions.";
+    const DEFAULT_PROMPT = "You are a helpful AI assistant. Please provide accurate, helpful, and friendly responses to user questions.";
+    let currentSessionId = null;
         
         async function loadCurrentPrompt() {
             try {
@@ -424,11 +520,76 @@ async def get_chat_interface():
                 showStatus('Error resetting system prompt: ' + error.message, 'error');
             }
         }
+
+        async function startSession() {
+            try {
+                // For now, use a default user id of 1
+                const response = await fetch('/sessions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: 1, session_metadata: { source: 'web' } })
+                });
+                const data = await response.json();
+                if (response.ok && data.session_id) {
+                    currentSessionId = data.session_id;
+                    document.getElementById('sessionIdLabel').textContent = String(currentSessionId);
+                    // Clear chat view for new session
+                    document.getElementById('messages').innerHTML = '';
+                    await loadSessions();
+                } else {
+                    showStatus('Failed to start session', 'error');
+                }
+            } catch (err) {
+                showStatus('Error starting session: ' + err.message, 'error');
+            }
+        }
+
+        async function loadSessions() {
+            try {
+                const res = await fetch('/sessions?user_id=1');
+                const data = await res.json();
+                const bar = document.getElementById('sessionsBar');
+                bar.innerHTML = '';
+                (data.sessions || []).forEach(s => {
+                    const btn = document.createElement('button');
+                    btn.textContent = `#${s.id}`;
+                    btn.style.backgroundColor = (s.id === currentSessionId) ? '#198754' : '#0d6efd';
+                    btn.style.padding = '4px 8px';
+                    btn.style.fontSize = '12px';
+                    btn.onclick = async () => {
+                        currentSessionId = s.id;
+                        document.getElementById('sessionIdLabel').textContent = String(currentSessionId);
+                        // Load messages for this session
+                        await loadMessagesForSession(currentSessionId);
+                        await loadSessions();
+                    };
+                    bar.appendChild(btn);
+                });
+            } catch (e) {
+                // ignore UI errors
+            }
+        }
+
+        async function loadMessagesForSession(sessionId) {
+            try {
+                const res = await fetch(`/sessions/${sessionId}/messages`);
+                const data = await res.json();
+                const messagesDiv = document.getElementById('messages');
+                messagesDiv.innerHTML = '';
+                (data.messages || []).forEach(m => addMessage(m.role, m.content));
+            } catch (e) {
+                // ignore
+            }
+        }
         
         async function sendMessage() {
             const input = document.getElementById('messageInput');
             const message = input.value.trim();
             if (!message) return;
+            if (!currentSessionId) {
+                await startSession();
+                if (!currentSessionId) return;
+            }
             
             addMessage('user', message);
             input.value = '';
@@ -440,7 +601,7 @@ async def get_chat_interface():
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({ 
-                        session_id: 1, 
+                        session_id: currentSessionId, 
                         message: message 
                     })
                 });
@@ -610,6 +771,7 @@ async def get_chat_interface():
         document.addEventListener('DOMContentLoaded', function() {
             loadCurrentPrompt();
             loadDocuments();
+            startSession().then(loadSessions);
         });
     </script>
 </body>
