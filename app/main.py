@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Header
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
@@ -8,6 +8,7 @@ from db import get_db
 from models import Prompt, KnowledgeDocument, Message, User, Session as ChatSession
 from schemas import ChatIn, ChatOut, SystemPromptIn, SystemPromptOut, DocumentUploadOut, DocumentListOut, DocumentDeleteOut
 from services.rag_service import RAGService
+from utils.token_counter import trim_history_to_token_budget
 import os
 import shutil
 from pathlib import Path
@@ -20,16 +21,20 @@ rag_service = RAGService()
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
-# Default system prompt (KB-first, no guessing, session-aware)
+# Default system prompt (helpful but grounded)
 DEFAULT_SYSTEM_PROMPT = (
-    "You are a helpful AI assistant for Dipietro & Associates. Be accurate, concise, and friendly.\n"
-    "Policy: Prefer answers grounded in the provided Knowledge Base (KB).\n"
-    "When KB context is provided, base your answer ONLY on that context. Do not add external facts.\n"
-    "If the KB does not contain the needed information, clearly say you don't have that specific info in the KB,\n"
-    "and suggest what the user can do next (e.g., provide more details, check the official site, or contact support).\n"
-    "Never guess or fabricate details such as timings, prices, inventory, policies, or personal information.\n"
-    "Within each chat session, remember and reuse user-provided facts and preferences, but only as they were stated in THIS session.\n"
-    "Ask brief clarifying questions when the request is ambiguous."
+    "You are a helpful AI assistant for Dipietro & Associates. Be conversational, friendly, and genuinely helpful.\n"
+    "\n"
+    "Guidelines:\n"
+    "- Engage naturally with users and provide helpful responses to their questions\n"
+    "- When you have relevant information from the Knowledge Base (KB), use it and mention it's from your knowledge base\n"
+    "- For general questions not requiring specific company info, provide helpful general information\n"
+    "- For company-specific details (appointments, policies, pricing, services), be clear if you need to check with staff\n"
+    "- Never make up specific company details like prices, appointment availability, or policies\n"
+    "- Remember context within each conversation to provide better assistance\n"
+    "- Be concise but thorough - aim to actually help the user achieve their goal\n"
+    "\n"
+    "You can discuss general topics, answer questions, and be conversational. Just be honest about what you know vs. what requires verification."
 )
 
 
@@ -42,6 +47,15 @@ def get_current_system_prompt(db: Session) -> str:
     if prompt:
         return prompt.text
     return DEFAULT_SYSTEM_PROMPT
+
+
+def require_admin(x_api_key: str | None = Header(default=None)):
+    if settings.ADMIN_API_KEY and x_api_key == settings.ADMIN_API_KEY:
+        return True
+    if settings.ADMIN_API_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    # If no ADMIN_API_KEY configured, allow (dev mode)
+    return True
 
 # Sessions API
 @app.post("/sessions")
@@ -68,22 +82,83 @@ async def start_session(payload: dict, db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error starting session: {str(e)}")
 
-@app.get("/sessions/{session_id}/messages")
-async def get_session_messages(session_id: int, db: Session = Depends(get_db)):
-    """Return last N messages from a session (N = CHAT_HISTORY_MAX_MESSAGES)."""
-    try:
-        msgs = (
+def _fetch_history_by_token_budget(db: Session, session_id: int) -> list[dict]:
+    """Fetch chat history strictly by token budget (no arbitrary message limit).
+    We page messages in chunks from newest to oldest until the budget is filled.
+    """
+    # Hard guard against runaway DB scans; can be tuned
+    page_size = 100
+    offset = 0
+    collected: list[Message] = []
+
+    # Keep pulling pages until adding another page would exceed token budget after trimming
+    while True:
+        page = (
             db.query(Message)
             .filter(Message.session_id == session_id)
             .order_by(Message.id.desc())
-            .limit(settings.CHAT_HISTORY_MAX_MESSAGES)
+            .offset(offset)
+            .limit(page_size)
             .all()
         )
+        if not page:
+            break
+
+        collected.extend(page)
+        # Try trimming with what we have so far; if it already meets budget, we can stop
+        test_msgs = [
+            {"role": m.role, "content": m.content}
+            for m in reversed(collected)
+            if m.role in ("user", "assistant")
+        ]
+        trimmed = trim_history_to_token_budget(
+            test_msgs,
+            settings.CHAT_HISTORY_MAX_TOKENS,
+            settings.OPENAI_MODEL,
+        )
+        # If trimming didn't grow with this page (i.e., budget reached), stop
+        if len(trimmed) < len(test_msgs):
+            break
+        offset += page_size
+
+    # Final trim on the aggregated set
+    final_msgs = [
+        {"role": m.role, "content": m.content}
+        for m in reversed(collected)
+        if m.role in ("user", "assistant")
+    ]
+    return trim_history_to_token_budget(
+        final_msgs, settings.CHAT_HISTORY_MAX_TOKENS, settings.OPENAI_MODEL
+    )
+
+
+@app.get("/sessions/{session_id}/messages")
+async def get_session_messages(session_id: int, db: Session = Depends(get_db)):
+    """Return recent messages from a session, limited by token budget (no hard count)."""
+    try:
+        trimmed = _fetch_history_by_token_budget(db, session_id)
+
+        # We also need ids/timestamps for UI; fetch the most recent N records that cover trimmed length
+        # Determine how many we returned
+        needed = len([m for m in trimmed if m.get("role") in ("user", "assistant")])
+        msgs = (
+            db.query(Message)
+            .filter(Message.session_id == session_id, Message.role.in_(["user", "assistant"]))
+            .order_by(Message.id.desc())
+            .limit(needed)
+            .all()
+        )
+
         return {
             "session_id": session_id,
             "messages": [
-                {"id": m.id, "role": m.role, "content": m.content, "created_at": m.created_at.isoformat()}
-                for m in reversed(msgs)
+                {
+                    "id": m.id,
+                    "role": t["role"],
+                    "content": t["content"],
+                    "created_at": m.created_at.isoformat() if getattr(m, "created_at", None) else None,
+                }
+                for m, t in zip(reversed(msgs), trimmed)
             ],
         }
     except Exception as e:
@@ -107,11 +182,12 @@ async def close_session(session_id: int, db: Session = Depends(get_db)):
 
 @app.get("/sessions")
 async def list_sessions(user_id: int, db: Session = Depends(get_db)):
-    """List recent sessions for a user (most recent first)."""
+    """List recent open sessions for a user (most recent first)."""
     try:
         sessions = (
             db.query(ChatSession)
             .filter(ChatSession.user_id == user_id)
+            .filter(ChatSession.status == "open")
             .order_by(ChatSession.id.desc())
             .limit(50)
             .all()
@@ -131,29 +207,27 @@ async def list_sessions(user_id: int, db: Session = Depends(get_db)):
 
 @app.post("/chat", response_model=ChatOut)
 async def chat(chat_data: ChatIn, db: Session = Depends(get_db)):
-    """Chat endpoint with limited message history.
-    - Loads last N messages for the provided session_id (N from settings.CHAT_HISTORY_MAX_MESSAGES)
+    """Chat endpoint with token-budgeted message history.
+    - Loads recent messages for the session within token limits
     - Persists the new user message and the assistant reply
     - Passes history to the RAG service for context
     """
     try:
         system_prompt = get_current_system_prompt(db)
 
-        # Fetch limited recent history for this session (excluding current user message)
-        history_limit = settings.CHAT_HISTORY_MAX_MESSAGES
-        prior_msgs = (
-            db.query(Message)
-            .filter(Message.session_id == chat_data.session_id)
-            .order_by(Message.id.desc())
-            .limit(history_limit)
-            .all()
+        # Build OpenAI-formatted history strictly by token budget
+        raw_history = _fetch_history_by_token_budget(db, chat_data.session_id)
+        
+        # Add system prompt and trim to token budget
+        messages_with_system = [{"role": "system", "content": system_prompt}] + raw_history
+        history = trim_history_to_token_budget(
+            messages_with_system, 
+            settings.CHAT_HISTORY_MAX_TOKENS,
+            settings.OPENAI_MODEL
         )
-        # Build OpenAI-formatted history in chronological order
-        history = [
-            {"role": m.role, "content": m.content}
-            for m in reversed(prior_msgs)
-            if m.role in ("user", "assistant")
-        ]
+        
+        # Remove system prompt from history (RAG service will add it back)
+        history = [msg for msg in history if msg.get("role") != "system"]
 
         # Persist the current user message
         user_msg = Message(session_id=chat_data.session_id, role="user", content=chat_data.message)
@@ -161,7 +235,7 @@ async def chat(chat_data: ChatIn, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(user_msg)
 
-        # Generate response with history
+        # Generate response with token-budgeted history
         reply, used_kb = rag_service.generate_rag_response(chat_data.message, system_prompt, history=history)
 
         # Persist assistant reply
@@ -184,7 +258,7 @@ async def get_system_prompt(db: Session = Depends(get_db)):
     return SystemPromptOut(text=DEFAULT_SYSTEM_PROMPT, is_custom=False)
 
 @app.post("/system-prompt", response_model=SystemPromptOut)
-async def set_system_prompt(prompt_data: SystemPromptIn, db: Session = Depends(get_db)):
+async def set_system_prompt(prompt_data: SystemPromptIn, db: Session = Depends(get_db), _: bool = Depends(require_admin)):
     """Set a new system prompt"""
     try:
         existing_prompt = db.query(Prompt).filter(Prompt.is_default == True).first()
@@ -205,7 +279,7 @@ async def set_system_prompt(prompt_data: SystemPromptIn, db: Session = Depends(g
         raise HTTPException(status_code=500, detail=f"Error setting system prompt: {str(e)}")
 
 @app.delete("/system-prompt")
-async def reset_system_prompt(db: Session = Depends(get_db)):
+async def reset_system_prompt(db: Session = Depends(get_db), _: bool = Depends(require_admin)):
     """Reset to default system prompt"""
     try:
         existing_prompt = db.query(Prompt).filter(Prompt.is_default == True).first()
@@ -219,7 +293,7 @@ async def reset_system_prompt(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Error resetting system prompt: {str(e)}")
 
 @app.post("/documents/upload", response_model=DocumentUploadOut)
-async def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db), _: bool = Depends(require_admin)):
     """Upload and process a document for the knowledge base"""
     try:
         # Validate file type
@@ -269,7 +343,7 @@ async def list_documents(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Error listing documents: {str(e)}")
 
 @app.delete("/documents/{document_id}", response_model=DocumentDeleteOut)
-async def delete_document(document_id: int, db: Session = Depends(get_db)):
+async def delete_document(document_id: int, db: Session = Depends(get_db), _: bool = Depends(require_admin)):
     """Delete a document from the knowledge base"""
     try:
         success = rag_service.delete_document(db, document_id)
@@ -551,6 +625,11 @@ async def get_chat_interface():
                 const bar = document.getElementById('sessionsBar');
                 bar.innerHTML = '';
                 (data.sessions || []).forEach(s => {
+                    const wrapper = document.createElement('div');
+                    wrapper.style.display = 'inline-flex';
+                    wrapper.style.alignItems = 'center';
+                    wrapper.style.gap = '4px';
+
                     const btn = document.createElement('button');
                     btn.textContent = `#${s.id}`;
                     btn.style.backgroundColor = (s.id === currentSessionId) ? '#198754' : '#0d6efd';
@@ -559,11 +638,24 @@ async def get_chat_interface():
                     btn.onclick = async () => {
                         currentSessionId = s.id;
                         document.getElementById('sessionIdLabel').textContent = String(currentSessionId);
-                        // Load messages for this session
                         await loadMessagesForSession(currentSessionId);
                         await loadSessions();
                     };
-                    bar.appendChild(btn);
+
+                    const closeBtn = document.createElement('button');
+                    closeBtn.textContent = '×';
+                    closeBtn.title = 'Close chat';
+                    closeBtn.style.backgroundColor = '#6c757d';
+                    closeBtn.style.padding = '2px 6px';
+                    closeBtn.style.fontSize = '12px';
+                    closeBtn.onclick = async (e) => {
+                        e.stopPropagation();
+                        await deleteSession(s.id);
+                    };
+
+                    wrapper.appendChild(btn);
+                    wrapper.appendChild(closeBtn);
+                    bar.appendChild(wrapper);
                 });
             } catch (e) {
                 // ignore UI errors
@@ -579,6 +671,27 @@ async def get_chat_interface():
                 (data.messages || []).forEach(m => addMessage(m.role, m.content));
             } catch (e) {
                 // ignore
+            }
+        }
+
+        async function deleteSession(sessionId) {
+            try {
+                const res = await fetch(`/sessions/${sessionId}`, { method: 'DELETE' });
+                if (res.ok) {
+                    // Only auto-create new session if we're closing the current active one
+                    if (currentSessionId === sessionId) {
+                        currentSessionId = null;
+                        document.getElementById('messages').innerHTML = '';
+                        document.getElementById('sessionIdLabel').textContent = '-';
+                        // Don't auto-start a new session - let user click "New chat" when ready
+                    }
+                    await loadSessions();
+                } else {
+                    const data = await res.json().catch(() => ({}));
+                    showStatus('Error closing session' + (data.detail ? ': ' + data.detail : ''), 'error');
+                }
+            } catch (e) {
+                showStatus('Error closing session: ' + e.message, 'error');
             }
         }
         

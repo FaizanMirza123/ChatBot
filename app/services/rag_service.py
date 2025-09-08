@@ -61,24 +61,34 @@ class RAGService:
         """
         query_lower = query.lower().strip()
         
-        
+        # Always skip KB for casual/personal interactions
         casual_patterns = [
             r'^(hi|hello|hey|good morning|good afternoon|good evening|greetings)!?$',
             r'^(how are you|how\'s it going|what\'s up)!?$',
             r'^(thanks|thank you|bye|goodbye|see you)!?$',
             r'^(yes|no|ok|okay|sure|fine)!?$',
+            r'.*\b(critical analysis|analyze me|tell me about myself|personal|bro|dude)\b.*'
         ]
         
         for pattern in casual_patterns:
             if re.match(pattern, query_lower):
                 return False
         
-      
-        for trigger in self.kb_triggers:
+        # Look for specific company/business related triggers
+        company_triggers = [
+            "dipietro", "audiology", "hearing", "appointment", "schedule", "clinic",
+            "office hours", "location", "address", "phone number", "contact info",
+            "services offered", "pricing", "cost", "insurance", "payment",
+            "hearing test", "hearing aid", "doctor", "audiologist"
+        ]
+        
+        for trigger in company_triggers:
             if trigger in query_lower:
                 return True
-      
-        if len(query.split()) > 5 and ('?' in query or 'what' in query_lower or 'how' in query_lower or 'where' in query_lower):
+                
+        # Only use KB for longer, specific business questions
+        if (len(query.split()) > 8 and 
+            any(word in query_lower for word in ["appointment", "service", "clinic", "office", "schedule", "available"])):
             return True
             
         return False
@@ -246,7 +256,28 @@ class RAGService:
         Generate response using RAG if appropriate, otherwise use regular chat.
         Returns (response, used_kb)
         """
-       
+        # If the user's message is short/ambiguous (e.g., "yes", "no"),
+        # contextualize it with the last assistant message so the model can
+        # respond meaningfully.
+        def contextualize_query(q: str, hist: list[dict] | None) -> str:
+            q_stripped = (q or "").strip().lower()
+            short_ack = {"yes", "yeah", "yup", "y", "no", "nope", "n", "ok", "okay", "sure", "fine", "thanks", "thank you"}
+            if len(q_stripped.split()) <= 3 or q_stripped in short_ack:
+                if hist:
+                    # Find the most recent assistant message
+                    for m in reversed(hist):
+                        if m.get("role") == "assistant":
+                            assistant_prev = m.get("content", "").strip()
+                            if assistant_prev:
+                                return (
+                                    f"The user replied: '{q}'. This is in response to your previous message: "
+                                    f"'{assistant_prev}'. Continue the conversation accordingly, acknowledging the user's reply and taking the next helpful step."
+                                )
+                # No history found; fall back to original
+            return q
+
+        query = contextualize_query(query, history)
+
         if not self.should_use_knowledge_base(query):
             # Build message list with optional history
             messages: list[dict] = [{"role": "system", "content": system_prompt}]
@@ -282,11 +313,13 @@ class RAGService:
             )
             return response.choices[0].message.content, False
         
-      
-        context_parts = []
+        # Build KB context and track citations
+        context_parts: list[str] = []
+        citations: list[str] = []
         for doc_text, score, metadata in kb_results:
-            if score < 0.7:  # Only use results with good similarity
+            if score < 0.7:  # Only use results with good similarity (lower distance = closer)
                 context_parts.append(f"From {metadata['filename']}: {doc_text}")
+                citations.append(f"{metadata['filename']} (chunk {metadata.get('chunk_index', '?')})")
         
         if not context_parts:
             # KB wasn't confident, fall back to regular chat with optional history
@@ -305,15 +338,20 @@ class RAGService:
             return response.choices[0].message.content, False
         
         context = "\n\n".join(context_parts)
-        
+
         rag_system_prompt = f"""{system_prompt}
 
 You have access to the following relevant information from the knowledge base:
 
 {context}
 
-IMPORTANT: Only use the provided information to answer questions. If the information doesn't contain the answer to the user's question, clearly state that you don't have that specific information in your knowledge base. Do not make up or assume information that isn't explicitly provided. Be accurate and honest about the limitations of the available information."""
-        
+Instructions:
+- Answer the user's exact question directly; avoid generic boilerplate or persona introductions.
+- If KB info is relevant, use it and, when helpful, mention it's from the knowledge base.
+- If the KB does not fully answer the question, you may add general helpful context while noting what requires verification.
+- Prefer concise, concrete answers. For broad topics, give 3–5 bullet points tailored to the user's phrasing.
+- Do not fabricate specific company details (pricing, appointments, policies)."""
+
         # Use KB context; include optional prior history to preserve continuity
         messages: list[dict] = [{"role": "system", "content": rag_system_prompt}]
         if history:
@@ -327,8 +365,10 @@ IMPORTANT: Only use the provided information to answer questions. If the informa
             max_tokens=settings.OPENAI_MAX_TOKENS,
             messages=messages
         )
-        
-        return response.choices[0].message.content, True
+        content = response.choices[0].message.content
+        # Citations are computed above but intentionally not exposed to end users.
+        # Optionally, log internally for QA: print(", ".join(citations))
+        return content, True
     
     def delete_document(self, db: Session, document_id: int) -> bool:
         """Delete a document and its chunks from both DB and vector store."""

@@ -4,7 +4,11 @@ FROM python:3.11.9-slim
 # Minimal env vars
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    HF_HOME=/root/.cache/huggingface \
+    TRANSFORMERS_CACHE=/root/.cache/huggingface \
+    SENTENCE_TRANSFORMERS_HOME=/root/.cache/torch/sentence_transformers \
+    FASTEMBED_CACHE_PATH=/root/.cache/fastembed
 
 WORKDIR /app
 
@@ -30,7 +34,31 @@ ENV DB_URL=sqlite:///app/chatbot.db \
     PYTHONPATH=/app/app
 
 # Create directories
-RUN mkdir -p app/uploads app/chroma_db
+# Create directories and model caches
+RUN mkdir -p app/uploads app/chroma_db /root/.cache/huggingface /root/.cache/torch/sentence_transformers /root/.cache/fastembed
+
+# Prefetch models into image layer so they don't download on every run
+# This layer will be cached unless requirements above change
+RUN --mount=type=cache,target=/root/.cache/huggingface \
+    --mount=type=cache,target=/root/.cache/torch \
+    python - <<'PY'
+from sentence_transformers import SentenceTransformer
+SentenceTransformer('all-MiniLM-L6-v2')
+print('Prefetched: all-MiniLM-L6-v2')
+PY
+# Try to prefetch fastembed ONNX model variants if fastembed is available
+RUN --mount=type=cache,target=/root/.cache/huggingface \
+    --mount=type=cache,target=/root/.cache/torch \
+    python - <<'PY'
+try:
+    from fastembed import TextEmbedding
+    m = TextEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    # Trigger model download
+    list(m.embed(["prefetch"]))
+    print('Prefetched via fastembed: all-MiniLM-L6-v2')
+except Exception as e:
+    print('Fastembed prefetch skipped:', e)
+PY
 
 EXPOSE 8000
 

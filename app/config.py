@@ -15,9 +15,10 @@ class Settings(BaseSettings):
 
     OPENAI_API_KEY: str
     OPENAI_ASSISTANT_ID: Optional[str] = None
+    ADMIN_API_KEY: Optional[str] = None
     
     # Chat history settings
-    CHAT_HISTORY_MAX_MESSAGES: int = 40  # number of most recent messages to include per session
+    CHAT_HISTORY_MAX_TOKENS: int = 3000  # max tokens for conversation history (leaves room for system prompt + new message + response)
 
     # OpenAI generation settings
     OPENAI_MODEL: str = "gpt-3.5-turbo"
