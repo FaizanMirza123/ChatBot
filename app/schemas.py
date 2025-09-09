@@ -9,8 +9,8 @@ class StartSessionOut(BaseModel):
     session_id: int
 
 class ChatIn(BaseModel):
-    session_id: int
     message: str
+    client_id: Optional[str] = None
 
 class ChatOut(BaseModel):
     reply: str

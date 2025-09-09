@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <div id="chatbot-widget"></div>
+    <script src="http://localhost:8000/static/chatbot-widget.js"></script>
+<script>
+  const widget = createChatbotWidget({
+    apiBase: 'http://localhost:8000/',
+    title: 'Ask Us',
+    userId: 1 // supply your site user id if you have one
+  });
+</script>
+</body>
+</html>

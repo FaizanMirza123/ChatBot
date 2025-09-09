@@ -28,6 +28,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 # Copy app contents to /app (not /app/app)
 COPY app/ ./
+# Copy static assets (web widget)
+COPY static/ ./static/
 
 # Set environment
 ENV DB_URL=sqlite:///app/chatbot.db \

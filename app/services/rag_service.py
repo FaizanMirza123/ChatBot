@@ -253,122 +253,111 @@ class RAGService:
     
     def generate_rag_response(self, query: str, system_prompt: str, history: list[dict] | None = None) -> Tuple[str, bool]:
         """
-        Generate response using RAG if appropriate, otherwise use regular chat.
+        Generate a concise response. Use KB when relevant; otherwise regular chat.
         Returns (response, used_kb)
         """
-        # If the user's message is short/ambiguous (e.g., "yes", "no"),
-        # contextualize it with the last assistant message so the model can
-        # respond meaningfully.
         def contextualize_query(q: str, hist: list[dict] | None) -> str:
             q_stripped = (q or "").strip().lower()
             short_ack = {"yes", "yeah", "yup", "y", "no", "nope", "n", "ok", "okay", "sure", "fine", "thanks", "thank you"}
             if len(q_stripped.split()) <= 3 or q_stripped in short_ack:
                 if hist:
-                    # Find the most recent assistant message
                     for m in reversed(hist):
                         if m.get("role") == "assistant":
-                            assistant_prev = m.get("content", "").strip()
-                            if assistant_prev:
+                            prev = m.get("content", "").strip()
+                            if prev:
                                 return (
-                                    f"The user replied: '{q}'. This is in response to your previous message: "
-                                    f"'{assistant_prev}'. Continue the conversation accordingly, acknowledging the user's reply and taking the next helpful step."
+                                    f"The user replied: '{q}'. This follows your previous message: '{prev}'. "
+                                    f"Respond briefly and take the next helpful step."
                                 )
-                # No history found; fall back to original
             return q
 
-        query = contextualize_query(query, history)
+        q = contextualize_query(query, history)
 
-        if not self.should_use_knowledge_base(query):
-            # Build message list with optional history
-            messages: list[dict] = [{"role": "system", "content": system_prompt}]
+        # If KB not needed, answer concisely without KB
+        if not self.should_use_knowledge_base(q):
+            concise_prompt = system_prompt + "\n\nWrite a concise answer. Maximum 2–3 short sentences or up to 3 bullets. No intros."
+            messages: list[dict] = [{"role": "system", "content": concise_prompt}]
             if history:
                 messages.extend(history)
-            messages.append({"role": "user", "content": query})
+            messages.append({"role": "user", "content": q})
 
             client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
             response = client.chat.completions.create(
                 model=settings.OPENAI_MODEL,
                 temperature=settings.OPENAI_TEMPERATURE,
                 max_tokens=settings.OPENAI_MAX_TOKENS,
-                messages=messages
+                messages=messages,
             )
             return response.choices[0].message.content, False
-        
 
-        kb_results = self.search_knowledge_base(query)
-        
+        # KB search
+        kb_results = self.search_knowledge_base(q)
         if not kb_results:
-            # No KB results, fall back to regular chat with optional history
-            messages: list[dict] = [{"role": "system", "content": system_prompt}]
+            concise_prompt = system_prompt + "\n\nWrite a concise answer. Maximum 2–3 short sentences or up to 3 bullets. No intros."
+            messages: list[dict] = [{"role": "system", "content": concise_prompt}]
             if history:
                 messages.extend(history)
-            messages.append({"role": "user", "content": query})
+            messages.append({"role": "user", "content": q})
 
             client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
             response = client.chat.completions.create(
                 model=settings.OPENAI_MODEL,
                 temperature=settings.OPENAI_TEMPERATURE,
                 max_tokens=settings.OPENAI_MAX_TOKENS,
-                messages=messages
+                messages=messages,
             )
             return response.choices[0].message.content, False
-        
-        # Build KB context and track citations
+
+        # Build KB context
         context_parts: list[str] = []
-        citations: list[str] = []
         for doc_text, score, metadata in kb_results:
-            if score < 0.7:  # Only use results with good similarity (lower distance = closer)
+            if score < 0.7:
                 context_parts.append(f"From {metadata['filename']}: {doc_text}")
-                citations.append(f"{metadata['filename']} (chunk {metadata.get('chunk_index', '?')})")
-        
+
         if not context_parts:
-            # KB wasn't confident, fall back to regular chat with optional history
-            messages: list[dict] = [{"role": "system", "content": system_prompt}]
+            concise_prompt = system_prompt + "\n\nWrite a concise answer. Maximum 2–3 short sentences or up to 3 bullets. No intros."
+            messages: list[dict] = [{"role": "system", "content": concise_prompt}]
             if history:
                 messages.extend(history)
-            messages.append({"role": "user", "content": query})
+            messages.append({"role": "user", "content": q})
 
             client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
             response = client.chat.completions.create(
                 model=settings.OPENAI_MODEL,
                 temperature=settings.OPENAI_TEMPERATURE,
                 max_tokens=settings.OPENAI_MAX_TOKENS,
-                messages=messages
+                messages=messages,
             )
             return response.choices[0].message.content, False
-        
+
         context = "\n\n".join(context_parts)
+        rag_system_prompt = (
+            f"{system_prompt}\n\n"
+            f"You have access to the following relevant information from the knowledge base:\n\n"
+            f"{context}\n\n"
+            "Instructions:\n"
+            "- Start with the direct answer in one sentence when possible.\n"
+            "- Keep it concise: 2–3 short sentences, or up to 3 bullets if listing.\n"
+            "- Avoid generic boilerplate or persona language.\n"
+            "- Use KB info when relevant and mention it's from the KB if helpful.\n"
+            "- If the KB is incomplete, say what’s known and what needs staff confirmation.\n"
+            "- Do not fabricate specific company details (pricing, appointments, policies)."
+        )
 
-        rag_system_prompt = f"""{system_prompt}
-
-You have access to the following relevant information from the knowledge base:
-
-{context}
-
-Instructions:
-- Answer the user's exact question directly; avoid generic boilerplate or persona introductions.
-- If KB info is relevant, use it and, when helpful, mention it's from the knowledge base.
-- If the KB does not fully answer the question, you may add general helpful context while noting what requires verification.
-- Prefer concise, concrete answers. For broad topics, give 3–5 bullet points tailored to the user's phrasing.
-- Do not fabricate specific company details (pricing, appointments, policies)."""
-
-        # Use KB context; include optional prior history to preserve continuity
-        messages: list[dict] = [{"role": "system", "content": rag_system_prompt}]
+        concise_rag_prompt = rag_system_prompt + "\n\nAnswer concisely. Max 2–3 short sentences or 3 bullets."
+        messages = [{"role": "system", "content": concise_rag_prompt}]
         if history:
             messages.extend(history)
-        messages.append({"role": "user", "content": query})
+        messages.append({"role": "user", "content": q})
 
         client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
         response = client.chat.completions.create(
             model=settings.OPENAI_MODEL,
             temperature=settings.OPENAI_TEMPERATURE,
             max_tokens=settings.OPENAI_MAX_TOKENS,
-            messages=messages
+            messages=messages,
         )
-        content = response.choices[0].message.content
-        # Citations are computed above but intentionally not exposed to end users.
-        # Optionally, log internally for QA: print(", ".join(citations))
-        return content, True
+        return response.choices[0].message.content, True
     
     def delete_document(self, db: Session, document_id: int) -> bool:
         """Delete a document and its chunks from both DB and vector store."""
