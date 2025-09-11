@@ -1,18 +1,20 @@
 (function(){
   const STYLE_ID='chatbot-widget-style';
   const WIDGET_ID='chatbot-widget-root';
-  function injectStyles(){ if(document.getElementById(STYLE_ID)) return; const s=document.createElement('style'); s.id=STYLE_ID; s.textContent=`
+  function injectStyles(){ let s=document.getElementById(STYLE_ID); if(!s){ s=document.createElement('style'); s.id=STYLE_ID; document.head.appendChild(s);} s.textContent=`
     .cb-floating-button{position:fixed;bottom:20px;right:20px;z-index:2147483000;width:56px;height:56px;border-radius:50%;background:#0d6efd;color:#fff;border:none;cursor:pointer;box-shadow:0 6px 18px rgba(13,110,253,0.35);display:flex;align-items:center;justify-content:center;font-size:22px}
   .cb-panel{position:fixed;bottom:86px;right:20px;z-index:2147483000;width:380px;height:72vh;min-height:360px;background:#fff;color:#111;border-radius:12px;box-shadow:0 10px 28px rgba(0,0,0,0.18);display:none;flex-direction:column;overflow:hidden;border:1px solid #e9ecef}
     .cb-panel.open{display:flex}
     .cb-header{padding:12px 14px;background:#0d6efd;color:#fff;display:flex;align-items:center;justify-content:space-between}
     .cb-title{font-weight:700;font-size:15px}
     .cb-close{background:transparent;border:0;color:#fff;cursor:pointer;font-size:18px}
-    .cb-section{padding:12px 14px;background:#fafafa;border-bottom:1px solid #e9ecef}
-    .cb-form{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-    .cb-form input{padding:10px;border:1px solid #ced4da;border-radius:6px;font-size:14px;flex:1 1 calc(50% - 12px);min-width:120px}
-    .cb-btn{background:#0d6efd;color:#fff;border:none;border-radius:6px;padding:10px 16px;cursor:pointer;flex:0 0 88px}
-    @media (max-width:420px){.cb-form input{flex:1 1 100%}.cb-btn{flex:1 1 100%}}
+  .cb-section{padding:16px 16px;background:#fafafa;border-bottom:1px solid #e9ecef}
+  .cb-section h2{margin:0 0 6px;font-size:18px;line-height:1.2;text-align:center}
+  .cb-note{font-size:13px;color:#6c757d;text-align:center;margin:0 0 12px}
+  .cb-form{display:flex;flex-direction:column;gap:14px;align-items:stretch;min-height:180px}
+  .cb-form input,.cb-form textarea{padding:10px;border:1px solid #ced4da;border-radius:6px;font-size:14px;width:100%;box-sizing:border-box}
+  .cb-btn{background:#0d6efd;color:#fff;border:none;border-radius:6px;padding:10px 16px;cursor:pointer;align-self:center;margin-top:auto}
+  @media (max-width:420px){.cb-btn{align-self:center;width:auto}}
     .cb-status{font-size:12px;margin-top:6px}
     .cb-status.error{color:#c1121f}
     .cb-status.ok{color:#198754}
@@ -25,7 +27,7 @@
   .cb-input{display:flex;gap:8px;padding:10px;border-top:1px solid #e9ecef;background:#fff;flex-shrink:0}
     .cb-input input{flex:1;padding:10px;border:1px solid #ced4da;border-radius:6px;font-size:14px}
     .cb-input button{background:#0d6efd;color:#fff;border:none;border-radius:6px;padding:10px 12px;cursor:pointer}
-  `; document.head.appendChild(s);}  
+  `; }  
   function createRoot(){ let existing=document.getElementById(WIDGET_ID); if(existing) return existing; const r=document.createElement('div'); r.id=WIDGET_ID; document.body.appendChild(r); return r; }
   function ChatbotWidget(opts){
     const inferredBase=(()=>{ try{ const cur=document.currentScript||Array.from(document.scripts||[]).find(s=>/chatbot-widget\.v2\.js(\?|$)/.test(s.src)); if(cur){ const dataBase=cur.getAttribute('data-api-base')||(cur.dataset?cur.dataset.apiBase:''); if(dataBase) return dataBase; if(window.ChatbotWidgetApiBase) return String(window.ChatbotWidgetApiBase); if(cur.src){ const u=new URL(cur.src,window.location.href); return u.origin+'/'; } } }catch(_){ } return (window.location&&window.location.origin?window.location.origin:'')+'/'; })();
@@ -67,11 +69,12 @@
     const title=el('div','cb-title',cfg.title); const close=el('button','cb-close','×'); header.appendChild(title); header.appendChild(close); panel.appendChild(header);
     // Form (gated + dynamic)
     const formSection=el('div','cb-section'); formSection.style.display='none';
-    const formTitle=el('div',null,'Visitor Info'); formTitle.style.fontWeight='bold'; formTitle.style.marginBottom='8px';
+  const formTitle=el('h2',null,'Visitor Info');
+  const formNote=el('div','cb-note','Kindly Provide you Creds incase we break off in between the chat');
     const formRow=el('div','cb-form');
     const saveBtn=el('button','cb-btn','Save');
     const formStatus=el('div','cb-status');
-    formSection.appendChild(formTitle); formSection.appendChild(formRow); formRow.appendChild(saveBtn); formSection.appendChild(formStatus); panel.appendChild(formSection);
+  formSection.appendChild(formTitle); formSection.appendChild(formNote); formSection.appendChild(formRow); formRow.appendChild(saveBtn); formSection.appendChild(formStatus); panel.appendChild(formSection);
     let dynamicFields=[]; // fetched config fields
     function rebuildFormFields(){
       // keep save button and status at end
@@ -82,8 +85,7 @@
         if(f.type!=='textarea') inputEl.type = (f.type==='email'||f.type==='number')?f.type:'text';
         inputEl.placeholder = f.placeholder || f.label || f.name;
         inputEl.dataset.fieldName = f.name;
-        inputEl.style.flex='1 1 calc(50% - 12px)';
-        inputEl.style.minWidth='120px';
+        // full-width handled by CSS
         formRow.insertBefore(inputEl, saveBtn);
       });
     }
