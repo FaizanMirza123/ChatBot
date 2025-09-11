@@ -4,3 +4,8 @@ PyPDF2==3.0.1
 python-docx==1.1.0
 
 # Add new dependencies here
+fastapi
+uvicorn
+sqlalchemy
+pydantic[email]
+python-multipart

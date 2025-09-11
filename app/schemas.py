@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import Optional, Any, Dict, List
 
 class StartSessionIn(BaseModel):
@@ -11,6 +11,8 @@ class StartSessionOut(BaseModel):
 class ChatIn(BaseModel):
     message: str
     client_id: Optional[str] = None
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
 
 class ChatOut(BaseModel):
     reply: str
@@ -62,3 +64,20 @@ class DocumentListOut(BaseModel):
 class DocumentDeleteOut(BaseModel):
     message: str
     success: bool
+
+class LeadIn(BaseModel):
+    name: str
+    email: EmailStr
+    client_id: Optional[str] = None
+
+class LeadOut(BaseModel):
+    id: int
+    name: str
+    email: EmailStr
+    created_at: str
+
+class WidgetConfigOut(BaseModel):
+    form_enabled: bool
+
+class WidgetConfigIn(BaseModel):
+    form_enabled: bool

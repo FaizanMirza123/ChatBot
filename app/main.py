@@ -1,13 +1,14 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Header
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Header, Response
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from openai import OpenAI
 from config import settings
 from db import get_db, Base, engine
-from models import Prompt, KnowledgeDocument, Message, User, Session as ChatSession
+from models import Prompt, KnowledgeDocument, Message, User, Session as ChatSession, Lead, WidgetConfig
 from schemas import ChatIn, ChatOut, SystemPromptIn, SystemPromptOut, DocumentUploadOut, DocumentListOut, DocumentDeleteOut
+from schemas import LeadIn, LeadOut, WidgetConfigOut, WidgetConfigIn
 from services.rag_service import RAGService
 from utils.token_counter import trim_history_to_token_budget
 import os
@@ -59,6 +60,22 @@ DEFAULT_SYSTEM_PROMPT = (
 in_memory_system_prompt = DEFAULT_SYSTEM_PROMPT
 use_database = True
 
+# List all form entries (leads) for admin table
+@app.get("/form-entries")
+async def list_form_entries(db: Session = Depends(get_db)):
+    leads = db.query(Lead).order_by(Lead.created_at.desc()).all()
+    entries = [
+        {
+            "id": l.id,
+            "name": l.name,
+            "email": l.email,
+            "client_id": l.client_id,
+            "created_at": l.created_at.isoformat()
+        }
+        for l in leads
+    ]
+    return JSONResponse(content={"entries": entries})
+
 def get_current_system_prompt(db: Session) -> str:
     """Get the current system prompt from database or return default"""
     prompt = db.query(Prompt).filter(Prompt.is_default == True).first()
@@ -98,6 +115,15 @@ def _get_or_create_client_session(db: Session, client_id: str) -> ChatSession:
         db.commit()
         db.refresh(sess)
     return sess
+
+def _get_or_create_user_by_client_id(db: Session, client_id: str) -> User:
+    user = db.query(User).filter(User.external_user_id == client_id).first()
+    if not user:
+        user = User(external_user_id=client_id)
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    return user
 
 def _fetch_history_by_token_budget(db: Session, session_id: int) -> list[dict]:
     """Fetch chat history strictly by token budget (no arbitrary message limit).
@@ -191,6 +217,33 @@ async def chat(chat_data: ChatIn, x_client_id: str | None = Header(default=None)
         # Remove system prompt from history (RAG service will add it back)
         history = [msg for msg in history if msg.get("role") != "system"]
 
+        # If name/email provided in this request, upsert lead
+        if (chat_data.name and chat_data.name.strip()) or chat_data.email:
+            try:
+                # Ensure user exists
+                _user = _get_or_create_user_by_client_id(db, client_id)
+                existing = (
+                    db.query(Lead)
+                    .filter(Lead.client_id == client_id)
+                    .order_by(Lead.id.desc())
+                    .first()
+                )
+                if existing:
+                    if chat_data.name and chat_data.name.strip():
+                        existing.name = chat_data.name.strip()
+                    if chat_data.email:
+                        existing.email = str(chat_data.email)
+                    db.add(existing)
+                    db.commit()
+                else:
+                    lead = Lead(user_id=_user.id, client_id=client_id, name=(chat_data.name or "").strip(), email=str(chat_data.email) if chat_data.email else "")
+                    db.add(lead)
+                    db.commit()
+            except Exception:
+                db.rollback()
+                # don't fail the chat on lead save error
+                pass
+
         # Persist the current user message
         user_msg = Message(session_id=sess.id, role="user", content=chat_data.message)
         db.add(user_msg)
@@ -220,6 +273,98 @@ async def get_system_prompt(db: Session = Depends(get_db)):
     if prompt:
         return SystemPromptOut(text=prompt.text, is_custom=True)
     return SystemPromptOut(text=DEFAULT_SYSTEM_PROMPT, is_custom=False)
+
+@app.get("/lead", response_model=LeadOut | None, status_code=200)
+async def get_lead(x_client_id: str | None = Header(default=None), db: Session = Depends(get_db)):
+    """Get saved lead info (name/email) for this client, if any.
+
+    Returns 200 with JSON when a lead exists, otherwise 204 No Content to avoid noisy 404 logs in normal flow.
+    """
+    client_id = (x_client_id or "anonymous").strip() or "anonymous"
+    lead = (
+        db.query(Lead)
+        .filter(Lead.client_id == client_id)
+        .order_by(Lead.id.desc())
+        .first()
+    )
+    if not lead:
+        # Explicit 204 instead of 404 (absence is expected before first save)
+        return Response(status_code=204)
+    return LeadOut(id=lead.id, name=lead.name, email=lead.email, created_at=lead.created_at.isoformat())
+
+@app.post("/lead", response_model=LeadOut)
+async def save_lead(lead_in: LeadIn, x_client_id: str | None = Header(default=None), db: Session = Depends(get_db)):
+    """Save or update lead info tied to the per-visitor client id."""
+    try:
+        client_id = (lead_in.client_id or x_client_id or "anonymous").strip() or "anonymous"
+        user = _get_or_create_user_by_client_id(db, client_id)
+
+        # Upsert behavior: if a lead exists for client, update; else create new
+        existing = (
+            db.query(Lead)
+            .filter(Lead.client_id == client_id)
+            .order_by(Lead.id.desc())
+            .first()
+        )
+        if existing:
+            existing.name = lead_in.name
+            existing.email = str(lead_in.email)
+            db.add(existing)
+            db.commit()
+            db.refresh(existing)
+            lead = existing
+        else:
+            lead = Lead(user_id=user.id, client_id=client_id, name=lead_in.name, email=str(lead_in.email))
+            db.add(lead)
+            db.commit()
+            db.refresh(lead)
+
+        return LeadOut(id=lead.id, name=lead.name, email=lead.email, created_at=lead.created_at.isoformat())
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error saving lead: {str(e)}")
+
+# Aliases under /api for clients that prefix API paths
+@app.get("/api/lead", response_model=LeadOut | None, status_code=200)
+async def get_lead_api(x_client_id: str | None = Header(default=None), db: Session = Depends(get_db)):
+    return await get_lead(x_client_id=x_client_id, db=db)
+
+@app.post("/api/lead", response_model=LeadOut)
+async def save_lead_api(lead_in: LeadIn, x_client_id: str | None = Header(default=None), db: Session = Depends(get_db)):
+    return await save_lead(lead_in=lead_in, x_client_id=x_client_id, db=db)
+
+# Widget config endpoints (single global config for now)
+def _get_or_create_widget_config(db: Session) -> WidgetConfig:
+    cfg = db.query(WidgetConfig).first()
+    if not cfg:
+        cfg = WidgetConfig(form_enabled=True)
+        db.add(cfg)
+        db.commit()
+        db.refresh(cfg)
+    return cfg
+
+@app.get("/widget-config", response_model=WidgetConfigOut)
+async def get_widget_config(db: Session = Depends(get_db)):
+    cfg = _get_or_create_widget_config(db)
+    return WidgetConfigOut(form_enabled=cfg.form_enabled)
+
+@app.post("/widget-config", response_model=WidgetConfigOut)
+async def update_widget_config(data: WidgetConfigIn, db: Session = Depends(get_db), _: bool = Depends(require_admin)):
+    cfg = _get_or_create_widget_config(db)
+    cfg.form_enabled = data.form_enabled
+    db.add(cfg)
+    db.commit()
+    db.refresh(cfg)
+    return WidgetConfigOut(form_enabled=cfg.form_enabled)
+
+# Chat/message aliases under /api for embedders that prefix paths
+@app.post("/api/chat", response_model=ChatOut)
+async def chat_api(chat_data: ChatIn, x_client_id: str | None = Header(default=None), db: Session = Depends(get_db)):
+    return await chat(chat_data=chat_data, x_client_id=x_client_id, db=db)
+
+@app.get("/api/messages")
+async def get_messages_api(x_client_id: str | None = Header(default=None), db: Session = Depends(get_db)):
+    return await get_messages(x_client_id=x_client_id, db=db)
 
 @app.post("/system-prompt", response_model=SystemPromptOut)
 async def set_system_prompt(prompt_data: SystemPromptIn, db: Session = Depends(get_db), _: bool = Depends(require_admin)):
@@ -467,7 +612,23 @@ async def get_chat_interface():
         </div>
         
         <div class="section">
-            <h2>📚 Knowledge Base Management</h2>
+            <h2>� Visitor Info</h2>
+            <div style="margin-bottom:10px;">
+                <label style="display:flex;align-items:center;gap:8px;font-size:14px;">
+                    <input type="checkbox" id="toggleFormEnabled" /> Enable pre-chat form
+                </label>
+                <small id="widgetConfigStatus" style="display:block;margin-top:4px;color:#555;"></small>
+            </div>
+            <div class="input-group" style="margin-bottom: 10px;">
+                <input type="text" id="leadName" placeholder="Your name">
+                <input type="email" id="leadEmail" placeholder="Your email">
+                <button onclick="saveLead()" style="min-width: 100px;">Save</button>
+            </div>
+            <div id="leadStatus" class="status"></div>
+        </div>
+
+        <div class="section">
+            <h2>�📚 Knowledge Base Management</h2>
             <div style="margin-bottom: 15px;">
                 <input type="file" id="documentFile" accept=".pdf,.docx,.txt" style="margin-bottom: 10px;">
                 <br>
@@ -480,6 +641,13 @@ async def get_chat_interface():
             </div>
         </div>
         
+        <div class="section">
+            <h2>Form Entries</h2>
+            <div id="formEntries" style="max-height: 220px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; margin-bottom: 18px; background: #fff; border-radius: 6px;">
+                <p>Loading form entries...</p>
+            </div>
+        </div>
+
         <div class="section">
             <h2>Chat</h2>
             <div class="messages" id="messages"></div>
@@ -579,6 +747,44 @@ async def get_chat_interface():
                 // ignore UI errors
             }
         }
+
+        async function loadLead() {
+            try {
+                const res = await fetch('/lead', { headers: { 'X-Client-Id': getClientId() } });
+                if (!res.ok) return; // 404 = no lead yet
+                const data = await res.json();
+                document.getElementById('leadName').value = data.name || '';
+                document.getElementById('leadEmail').value = data.email || '';
+                showLeadStatus('Loaded saved info', 'success');
+            } catch (_) { /* ignore */ }
+        }
+
+        async function saveLead() {
+            const name = document.getElementById('leadName').value.trim();
+            const email = document.getElementById('leadEmail').value.trim();
+            if (!name || !email) {
+                showLeadStatus('Please enter both name and email', 'error');
+                return;
+            }
+            try {
+                const res = await fetch('/lead', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Client-Id': getClientId(),
+                    },
+                    body: JSON.stringify({ name, email, client_id: getClientId() })
+                });
+                if (res.ok) {
+                    showLeadStatus('Saved!', 'success');
+                } else {
+                    const err = await res.json().catch(() => ({}));
+                    showLeadStatus('Error: ' + (err.detail || res.statusText), 'error');
+                }
+            } catch (e) {
+                showLeadStatus('Error: ' + e.message, 'error');
+            }
+        }
         
         async function sendMessage() {
             const input = document.getElementById('messageInput');
@@ -588,15 +794,25 @@ async def get_chat_interface():
             input.value = '';
             
             try {
+                const nameEl = document.getElementById('leadName');
+                const emailEl = document.getElementById('leadEmail');
+                const name = nameEl ? nameEl.value.trim() : '';
+                const email = emailEl ? emailEl.value.trim() : '';
+                const emailOk = !email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+                const payload = { message, client_id: getClientId(), ...(name ? { name } : {}) };
+                if (emailOk && email) payload.email = email;
                 const response = await fetch('/chat', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'X-Client-Id': getClientId(),
                     },
-                    body: JSON.stringify({ message: message, client_id: getClientId() })
+                    body: JSON.stringify(payload)
                 });
-                
+                if (!response.ok) {
+                    const err = await response.json().catch(() => ({}));
+                    throw new Error(err.detail || err.message || response.statusText);
+                }
                 const data = await response.json();
                 
                 // Add KB indicator if knowledge base was used
@@ -665,6 +881,16 @@ async def get_chat_interface():
             setTimeout(() => {
                 status.style.display = 'none';
             }, 3000);
+        }
+
+        function showLeadStatus(message, type) {
+            const status = document.getElementById('leadStatus');
+            status.textContent = message;
+            status.className = `status ${type}`;
+            status.style.display = 'block';
+            setTimeout(() => {
+                status.style.display = 'none';
+            }, 2500);
         }
         
         async function uploadDocument() {
@@ -758,11 +984,51 @@ async def get_chat_interface():
             }
         }
         
-        // Load current prompt and documents on page load
+        async function loadFormEntries() {
+            try {
+                const res = await fetch('/form-entries');
+                const data = await res.json();
+                const entriesDiv = document.getElementById('formEntries');
+                if (!data.entries || !data.entries.length) {
+                    entriesDiv.innerHTML = '<p>No form entries yet.</p>';
+                    return;
+                }
+                let html = '<table style="width:100%;border-collapse:collapse;font-size:13px;">';
+                html += '<tr style="background:#f1f1f1;"><th>Name</th><th>Email</th><th>Client ID</th><th>Date</th></tr>';
+                data.entries.forEach(e => {
+                    html += `<tr><td>${e.name||''}</td><td>${e.email}</td><td>${e.client_id}</td><td>${new Date(e.created_at).toLocaleString()}</td></tr>`;
+                });
+                html += '</table>';
+                entriesDiv.innerHTML = html;
+            } catch (e) {
+                document.getElementById('formEntries').innerHTML = '<p>Error loading entries.</p>';
+            }
+        }
+
+        // Load current prompt, documents, messages, lead, and form entries on page load
         document.addEventListener('DOMContentLoaded', function() {
             loadCurrentPrompt();
             loadDocuments();
             loadMessages();
+            loadLead();
+            loadFormEntries();
+            // load widget config toggle
+            fetch('/widget-config').then(r=>r.json()).then(c=>{ const cb=document.getElementById('toggleFormEnabled'); if(cb){ cb.checked = !!c.form_enabled; } });
+            const cb=document.getElementById('toggleFormEnabled');
+            if(cb){
+                cb.addEventListener('change', async ()=>{
+                    try {
+                        const res = await fetch('/widget-config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ form_enabled: cb.checked })});
+                        if(res.ok){
+                            document.getElementById('widgetConfigStatus').textContent = 'Saved';
+                            try { localStorage.setItem('widget_config_version', Date.now().toString()); } catch(_){}
+                            setTimeout(()=>{document.getElementById('widgetConfigStatus').textContent='';},1500);
+                        } else {
+                            document.getElementById('widgetConfigStatus').textContent = 'Error saving';
+                        }
+                    } catch(e){ document.getElementById('widgetConfigStatus').textContent = 'Network error'; }
+                });
+            }
         });
     </script>
 </body>
