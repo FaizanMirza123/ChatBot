@@ -3,7 +3,7 @@
   const WIDGET_ID='chatbot-widget-root';
   function injectStyles(){ if(document.getElementById(STYLE_ID)) return; const s=document.createElement('style'); s.id=STYLE_ID; s.textContent=`
     .cb-floating-button{position:fixed;bottom:20px;right:20px;z-index:2147483000;width:56px;height:56px;border-radius:50%;background:#0d6efd;color:#fff;border:none;cursor:pointer;box-shadow:0 6px 18px rgba(13,110,253,0.35);display:flex;align-items:center;justify-content:center;font-size:22px}
-    .cb-panel{position:fixed;bottom:86px;right:20px;z-index:2147483000;width:380px;max-height:72vh;background:#fff;color:#111;border-radius:12px;box-shadow:0 10px 28px rgba(0,0,0,0.18);display:none;flex-direction:column;overflow:hidden;border:1px solid #e9ecef}
+  .cb-panel{position:fixed;bottom:86px;right:20px;z-index:2147483000;width:380px;height:72vh;min-height:360px;background:#fff;color:#111;border-radius:12px;box-shadow:0 10px 28px rgba(0,0,0,0.18);display:none;flex-direction:column;overflow:hidden;border:1px solid #e9ecef}
     .cb-panel.open{display:flex}
     .cb-header{padding:12px 14px;background:#0d6efd;color:#fff;display:flex;align-items:center;justify-content:space-between}
     .cb-title{font-weight:700;font-size:15px}
@@ -16,11 +16,13 @@
     .cb-status{font-size:12px;margin-top:6px}
     .cb-status.error{color:#c1121f}
     .cb-status.ok{color:#198754}
-    .cb-messages{flex:1;overflow-y:auto;padding:12px;background:#f8f9fa}
+  /* Make chat wrapper a flex column so messages can scroll and input stays pinned */
+  .cb-chat{display:flex;flex-direction:column;flex:1;min-height:0}
+  .cb-messages{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px;background:#f8f9fa}
     .cb-message{margin:8px 0;padding:10px;border-radius:8px;line-height:1.38;font-size:14px}
     .cb-message.user{background:#e7f1ff;margin-left:15%}
     .cb-message.assistant{background:#eef7e9;margin-right:15%}
-    .cb-input{display:flex;gap:8px;padding:10px;border-top:1px solid #e9ecef;background:#fff}
+  .cb-input{display:flex;gap:8px;padding:10px;border-top:1px solid #e9ecef;background:#fff;flex-shrink:0}
     .cb-input input{flex:1;padding:10px;border:1px solid #ced4da;border-radius:6px;font-size:14px}
     .cb-input button{background:#0d6efd;color:#fff;border:none;border-radius:6px;padding:10px 12px;cursor:pointer}
   `; document.head.appendChild(s);}  
@@ -42,7 +44,21 @@
     }
     function addMessage(role,content){ const m=el('div','cb-message '+role); m.textContent=content; messages.appendChild(m); messages.scrollTop=messages.scrollHeight; }
     async function loadMessages(){ messages.innerHTML=''; try{ const data=await api('messages'); (data&&data.messages||[]).forEach(m=>addMessage(m.role,m.content)); }catch(_){ }}
-    async function sendMessage(){ if(currentFormEnabled && !leadSaved) return; const text=input.value.trim(); if(!text) return; addMessage('user',text); input.value=''; send.disabled=true; try{ const data=await api('chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,client_id:getClientId()})}); addMessage('assistant',(data.used_faq?'📚 ':'')+data.reply);}catch(e){ addMessage('assistant','Error: '+(e&&e.message?e.message:'Failed to reach API')); } finally { send.disabled=false; } }
+    // Inflight control helpers (declared here for access)
+    let inflightCtrl=null; let isSending=false; let typingNode=null; let typingTimer=null;
+    function setSendingMode(active){ isSending=!!active; if(typeof input!=='undefined') input.disabled=isSending; if(typeof send!=='undefined'){ send.textContent=isSending?'⏹':'➤'; send.title=isSending?'Stop':'Send'; } }
+    function startTyping(){ stopTyping(); typingNode=el('div','cb-message assistant','…'); messages.appendChild(typingNode); messages.scrollTop=messages.scrollHeight; let dots=1; typingTimer=setInterval(()=>{ if(!typingNode) return; dots=(dots%3)+1; typingNode.textContent=''.padStart(dots,'.'); },400); }
+  function stopTyping(){ if(typingTimer){ clearInterval(typingTimer); typingTimer=null; } if(typingNode&&typingNode.parentNode){ typingNode.parentNode.removeChild(typingNode);} typingNode=null; }
+  function abortRequest(){ if(inflightCtrl){ inflightCtrl.abort(); } }
+    async function sendMessage(){
+      if(currentFormEnabled && !leadSaved) return; const text=input.value.trim(); if(!text) return;
+      addMessage('user',text); input.value=''; setSendingMode(true); inflightCtrl=new AbortController(); startTyping();
+      try{
+        const data=await api('chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,client_id:getClientId()}), signal: inflightCtrl.signal});
+        stopTyping(); addMessage('assistant',(data.used_faq?'📚 ':'')+data.reply);
+      }catch(e){ stopTyping(); if(e && (e.name==='AbortError' || /aborted/i.test(String(e)))){ addMessage('assistant','(stopped)'); } else { addMessage('assistant','Error: '+(e&&e.message?e.message:'Failed to reach API')); } }
+      finally { setSendingMode(false); inflightCtrl=null; }
+    }
     // DOM
     const root=createRoot(); root.innerHTML='';
     const btn=el('button','cb-floating-button','💬');
@@ -71,8 +87,8 @@
         formRow.insertBefore(inputEl, saveBtn);
       });
     }
-    // Chat wrapper
-    const chatWrapper=el('div',null); const messages=el('div','cb-messages'); const inputBar=el('div','cb-input'); const input=document.createElement('input'); input.placeholder='Type your message...'; const send=el('button',null,'Send'); inputBar.appendChild(input); inputBar.appendChild(send); chatWrapper.appendChild(messages); chatWrapper.appendChild(inputBar); panel.appendChild(chatWrapper);
+  // Chat wrapper
+  const chatWrapper=el('div','cb-chat'); const messages=el('div','cb-messages'); const inputBar=el('div','cb-input'); const input=document.createElement('input'); input.placeholder='Type your message...'; const send=el('button',null,'➤'); inputBar.appendChild(input); inputBar.appendChild(send); chatWrapper.appendChild(messages); chatWrapper.appendChild(inputBar); panel.appendChild(chatWrapper);
     root.appendChild(btn); root.appendChild(panel);
   let currentFormEnabled=null; let leadSaved=false;
     // Visibility logic:
@@ -83,7 +99,7 @@
       if(currentFormEnabled){
         if(leadSaved){
           formSection.style.display='none';
-          chatWrapper.style.display='block';
+          chatWrapper.style.display='flex';
           saveBtn.disabled=true;
         } else {
           formSection.style.display='block';
@@ -92,7 +108,7 @@
         }
       } else {
         formSection.style.display='none';
-        chatWrapper.style.display='block';
+        chatWrapper.style.display='flex';
       }
     }
   function getFieldEl(name){ return Array.from(formRow.querySelectorAll('[data-field-name]')).find(i=>i.dataset.fieldName===name); }
@@ -103,8 +119,9 @@
     let poll=null; function startPoll(){ if(poll) return; poll=setInterval(refreshConfig,20000);} function stopPoll(){ if(poll){ clearInterval(poll); poll=null; }}
     btn.onclick=async()=>{ const was=panel.classList.contains('open'); if(!was){ await refreshConfig().catch(()=>{});} panel.classList.toggle('open'); if(!was) startPoll(); else stopPoll(); };
     close.onclick=()=>{ panel.classList.remove('open'); stopPoll(); };
-    try{ window.addEventListener('storage', e=>{ if(e && e.key==='widget_config_version'){ refreshConfig(); }}); }catch(_){ }
-    send.onclick=sendMessage; input.addEventListener('keydown',e=>{ if(e.key==='Enter') sendMessage(); });
+  try{ window.addEventListener('storage', e=>{ if(e && e.key==='widget_config_version'){ refreshConfig(); }}); }catch(_){ }
+  send.onclick=()=>{ if(isSending){ abortRequest(); } else { sendMessage(); } };
+  input.addEventListener('keydown',e=>{ if(e.key==='Enter' && !isSending) sendMessage(); if(e.key==='Escape' && isSending) abortRequest(); });
     async function saveLead(){
       if(leadSaved) return;
       const data={};
