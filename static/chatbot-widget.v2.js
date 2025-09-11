@@ -49,19 +49,32 @@
     const panel=el('div','cb-panel');
     const header=el('div','cb-header');
     const title=el('div','cb-title',cfg.title); const close=el('button','cb-close','×'); header.appendChild(title); header.appendChild(close); panel.appendChild(header);
-    // Form (gated)
+    // Form (gated + dynamic)
     const formSection=el('div','cb-section'); formSection.style.display='none';
     const formTitle=el('div',null,'Visitor Info'); formTitle.style.fontWeight='bold'; formTitle.style.marginBottom='8px';
     const formRow=el('div','cb-form');
-    const nameInput=document.createElement('input'); nameInput.type='text'; nameInput.placeholder='Your name (optional)';
-    const emailInput=document.createElement('input'); emailInput.type='email'; emailInput.placeholder='Your email (required to save)';
     const saveBtn=el('button','cb-btn','Save');
     const formStatus=el('div','cb-status');
-    formSection.appendChild(formTitle); formSection.appendChild(formRow); formRow.appendChild(nameInput); formRow.appendChild(emailInput); formRow.appendChild(saveBtn); formSection.appendChild(formStatus); panel.appendChild(formSection);
+    formSection.appendChild(formTitle); formSection.appendChild(formRow); formRow.appendChild(saveBtn); formSection.appendChild(formStatus); panel.appendChild(formSection);
+    let dynamicFields=[]; // fetched config fields
+    function rebuildFormFields(){
+      // keep save button and status at end
+      while(formRow.firstChild && formRow.firstChild!==saveBtn){ formRow.removeChild(formRow.firstChild); }
+      const sorted=[...dynamicFields].sort((a,b)=> (a.order||0)-(b.order||0));
+      sorted.forEach(f=>{
+        const inputEl = (f.type==='textarea')? document.createElement('textarea'): document.createElement('input');
+        if(f.type!=='textarea') inputEl.type = (f.type==='email'||f.type==='number')?f.type:'text';
+        inputEl.placeholder = f.placeholder || f.label || f.name;
+        inputEl.dataset.fieldName = f.name;
+        inputEl.style.flex='1 1 calc(50% - 12px)';
+        inputEl.style.minWidth='120px';
+        formRow.insertBefore(inputEl, saveBtn);
+      });
+    }
     // Chat wrapper
     const chatWrapper=el('div',null); const messages=el('div','cb-messages'); const inputBar=el('div','cb-input'); const input=document.createElement('input'); input.placeholder='Type your message...'; const send=el('button',null,'Send'); inputBar.appendChild(input); inputBar.appendChild(send); chatWrapper.appendChild(messages); chatWrapper.appendChild(inputBar); panel.appendChild(chatWrapper);
     root.appendChild(btn); root.appendChild(panel);
-    let currentFormEnabled=null; let leadSaved=false;
+  let currentFormEnabled=null; let leadSaved=false;
     // Visibility logic:
     // 1. Form feature disabled => show chat only.
     // 2. Enabled & not saved => show form only (gate chat).
@@ -82,9 +95,10 @@
         chatWrapper.style.display='block';
       }
     }
-    async function loadLead(){ try{ const lead=await api('lead'); if(lead && lead.email){ nameInput.value=lead.name||''; emailInput.value=lead.email||''; leadSaved=true; updateVisibility(); } }catch(_){ } }
-    async function applyFormEnabled(flag){ if(flag){ if(currentFormEnabled===null){ await loadLead(); } } else { leadSaved=true; } currentFormEnabled=flag; updateVisibility(); }
-    async function refreshConfig(){ try{ const cfg=await api('widget-config'); if(!cfg) return; const desired=!!cfg.form_enabled; if(desired!==currentFormEnabled){ await applyFormEnabled(desired);} else { updateVisibility(); } }catch(_){ } }
+  function getFieldEl(name){ return Array.from(formRow.querySelectorAll('[data-field-name]')).find(i=>i.dataset.fieldName===name); }
+  async function loadLead(){ try{ const lead=await api('lead'); if(lead && lead.email){ const nameEl=getFieldEl('name'); const emailEl=getFieldEl('email'); if(nameEl) nameEl.value=lead.name||''; if(emailEl) emailEl.value=lead.email||''; leadSaved=true; updateVisibility(); } }catch(_){ } }
+  async function applyFormEnabled(flag){ if(flag){ if(currentFormEnabled===null){ await loadLead(); } } else { leadSaved=true; } currentFormEnabled=flag; updateVisibility(); }
+  async function refreshConfig(){ try{ const wc=await api('widget-config'); if(!wc) return; dynamicFields=Array.isArray(wc.fields)?wc.fields:[]; rebuildFormFields(); const desired=!!wc.form_enabled; if(desired!==currentFormEnabled){ await applyFormEnabled(desired);} else { updateVisibility(); } }catch(_){ } }
     (async()=>{ await refreshConfig(); })();
     let poll=null; function startPoll(){ if(poll) return; poll=setInterval(refreshConfig,20000);} function stopPoll(){ if(poll){ clearInterval(poll); poll=null; }}
     btn.onclick=async()=>{ const was=panel.classList.contains('open'); if(!was){ await refreshConfig().catch(()=>{});} panel.classList.toggle('open'); if(!was) startPoll(); else stopPoll(); };
@@ -92,25 +106,35 @@
     try{ window.addEventListener('storage', e=>{ if(e && e.key==='widget_config_version'){ refreshConfig(); }}); }catch(_){ }
     send.onclick=sendMessage; input.addEventListener('keydown',e=>{ if(e.key==='Enter') sendMessage(); });
     async function saveLead(){
-      if(leadSaved) return; // already saved for this user
-      const email=emailInput.value.trim();
-      if(!email||!/\S+@\S+\.\S+/.test(email)){
-        formStatus.textContent='Please enter a valid email.';
-        formStatus.className='cb-status error';
-        return;
+      if(leadSaved) return;
+      const data={};
+      let emailValid=true;
+      dynamicFields.forEach(f=>{
+        const el=getFieldEl(f.name);
+        if(!el) return;
+        const val=(el.value||'').trim();
+        if(f.required && !val){ emailValid=false; }
+        data[f.name]=val;
+      });
+      const emailVal=data.email;
+      // Basic required + email validation if email field present
+      if(dynamicFields.some(f=>f.name==='email' && f.required)){
+        if(!emailVal || !/\S+@\S+\.\S+/.test(emailVal)) emailValid=false;
       }
+      if(!emailValid){ formStatus.textContent='Please fill required fields correctly.'; formStatus.className='cb-status error'; return; }
       try{
         saveBtn.disabled=true;
-        await api('lead',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:nameInput.value.trim(),email,client_id:getClientId()})});
+        if(emailVal){
+          await api('lead',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:data.name||'',email:emailVal,client_id:getClientId()})});
+        } else {
+          // fallback generic submission
+          await api('form/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+        }
         leadSaved=true;
         formStatus.textContent='Saved';
         formStatus.className='cb-status ok';
         updateVisibility();
-      }catch(e){
-        saveBtn.disabled=false; // allow retry if failed
-        formStatus.textContent='Error: '+(e&&e.message?e.message:'Could not save info');
-        formStatus.className='cb-status error';
-      }
+      }catch(e){ saveBtn.disabled=false; formStatus.textContent='Error: '+(e&&e.message?e.message:'Could not save info'); formStatus.className='cb-status error'; }
     }
     saveBtn.onclick=saveLead;
     injectStyles(); loadMessages().catch(()=>{});

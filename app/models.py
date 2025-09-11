@@ -76,6 +76,7 @@ class FormResponse(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     form_id: Mapped[int] = mapped_column(ForeignKey("forms.id", ondelete="CASCADE"), index=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    client_id: Mapped[str | None] = mapped_column(String(128), index=True, nullable=True)
     response_json: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -93,3 +94,4 @@ class WidgetConfig(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     # Single row table (id=1) for global widget settings for now
     form_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    form_fields: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # list of field definitions

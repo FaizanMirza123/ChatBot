@@ -76,8 +76,18 @@ class LeadOut(BaseModel):
     email: EmailStr
     created_at: str
 
+class FormField(BaseModel):
+    name: str  # key used in storage
+    label: str
+    type: str = "text"  # text, email, number, textarea
+    required: bool = False
+    placeholder: Optional[str] = None
+    order: int = 0
+
 class WidgetConfigOut(BaseModel):
     form_enabled: bool
+    fields: List[FormField] = []
 
 class WidgetConfigIn(BaseModel):
     form_enabled: bool
+    fields: List[FormField] = []

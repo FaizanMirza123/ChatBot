@@ -9,6 +9,7 @@ from db import get_db, Base, engine
 from models import Prompt, KnowledgeDocument, Message, User, Session as ChatSession, Lead, WidgetConfig
 from schemas import ChatIn, ChatOut, SystemPromptIn, SystemPromptOut, DocumentUploadOut, DocumentListOut, DocumentDeleteOut
 from schemas import LeadIn, LeadOut, WidgetConfigOut, WidgetConfigIn
+from schemas import FormField
 from services.rag_service import RAGService
 from utils.token_counter import trim_history_to_token_budget
 import os
@@ -337,7 +338,10 @@ async def save_lead_api(lead_in: LeadIn, x_client_id: str | None = Header(defaul
 def _get_or_create_widget_config(db: Session) -> WidgetConfig:
     cfg = db.query(WidgetConfig).first()
     if not cfg:
-        cfg = WidgetConfig(form_enabled=True)
+        cfg = WidgetConfig(form_enabled=True, form_fields=[
+            {"name":"name","label":"Your Name","type":"text","required":False,"placeholder":"Optional name","order":0},
+            {"name":"email","label":"Email","type":"email","required":True,"placeholder":"you@example.com","order":1}
+        ])
         db.add(cfg)
         db.commit()
         db.refresh(cfg)
@@ -346,16 +350,66 @@ def _get_or_create_widget_config(db: Session) -> WidgetConfig:
 @app.get("/widget-config", response_model=WidgetConfigOut)
 async def get_widget_config(db: Session = Depends(get_db)):
     cfg = _get_or_create_widget_config(db)
-    return WidgetConfigOut(form_enabled=cfg.form_enabled)
+    fields = cfg.form_fields or []
+    return WidgetConfigOut(form_enabled=cfg.form_enabled, fields=fields)
 
 @app.post("/widget-config", response_model=WidgetConfigOut)
 async def update_widget_config(data: WidgetConfigIn, db: Session = Depends(get_db), _: bool = Depends(require_admin)):
     cfg = _get_or_create_widget_config(db)
     cfg.form_enabled = data.form_enabled
+    # store fields in deterministic order
+    cfg.form_fields = sorted([f.dict() for f in data.fields], key=lambda x: (x.get('order',0), x.get('name','')))
     db.add(cfg)
     db.commit()
     db.refresh(cfg)
-    return WidgetConfigOut(form_enabled=cfg.form_enabled)
+    return WidgetConfigOut(form_enabled=cfg.form_enabled, fields=cfg.form_fields or [])
+
+# Dynamic form submission (generic) - optional future replacement for /lead
+@app.post("/form/submit")
+async def submit_dynamic_form(payload: dict, x_client_id: str | None = Header(default=None), db: Session = Depends(get_db)):
+    cfg = _get_or_create_widget_config(db)
+    fields = cfg.form_fields or []
+    # basic validation
+    required_missing = []
+    normalized = {}
+    for f in fields:
+        key = f.get('name')
+        if not key:
+            continue
+        val = payload.get(key)
+        if f.get('required') and (val is None or str(val).strip()==""):
+            required_missing.append(key)
+        else:
+            if val is not None:
+                normalized[key] = val
+    if required_missing:
+        raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(required_missing)}")
+    # store alongside existing lead semantics if email field present
+    email_val = normalized.get('email')
+    name_val = normalized.get('name')
+    if email_val:
+        # reuse save_lead logic path for persistence in leads table
+        try:
+            client_id = (x_client_id or 'anonymous').strip() or 'anonymous'
+            user = _get_or_create_user_by_client_id(db, client_id)
+            existing = (
+                db.query(Lead)
+                .filter(Lead.client_id == client_id)
+                .order_by(Lead.id.desc())
+                .first()
+            )
+            if existing:
+                if name_val is not None:
+                    existing.name = name_val
+                existing.email = str(email_val)
+                db.add(existing); db.commit(); db.refresh(existing)
+            else:
+                new_lead = Lead(user_id=user.id, client_id=client_id, name=name_val or '', email=str(email_val))
+                db.add(new_lead); db.commit(); db.refresh(new_lead)
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Error saving lead: {str(e)}")
+    return {"saved": True, "data": normalized}
 
 # Chat/message aliases under /api for embedders that prefix paths
 @app.post("/api/chat", response_model=ChatOut)
@@ -612,19 +666,16 @@ async def get_chat_interface():
         </div>
         
         <div class="section">
-            <h2>� Visitor Info</h2>
-            <div style="margin-bottom:10px;">
-                <label style="display:flex;align-items:center;gap:8px;font-size:14px;">
-                    <input type="checkbox" id="toggleFormEnabled" /> Enable pre-chat form
-                </label>
-                <small id="widgetConfigStatus" style="display:block;margin-top:4px;color:#555;"></small>
+            <h2>Visitor Form Config</h2>
+            <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:6px;">
+                <input type="checkbox" id="toggleFormEnabled" /> Enable pre-chat form
+            </label>
+            <div id="widgetConfigStatus" style="font-size:12px;margin-bottom:10px;color:#198754;"></div>
+            <div id="formFieldsContainer" style="border:1px solid #ddd;padding:10px;border-radius:6px;background:#fff;margin-bottom:8px;">
+                <p style="font-size:12px;color:#666;">Loading fields...</p>
             </div>
-            <div class="input-group" style="margin-bottom: 10px;">
-                <input type="text" id="leadName" placeholder="Your name">
-                <input type="email" id="leadEmail" placeholder="Your email">
-                <button onclick="saveLead()" style="min-width: 100px;">Save</button>
-            </div>
-            <div id="leadStatus" class="status"></div>
+            <button id="addFieldBtn" type="button" style="background:#0d6efd;color:#fff;border:none;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:13px;">Add Field</button>
+            <div style="margin-top:14px;font-size:12px;color:#666;">Changes auto-save. Field "name" becomes key. To capture lead email use field named <code>email</code>.</div>
         </div>
 
         <div class="section">
@@ -1012,23 +1063,65 @@ async def get_chat_interface():
             loadMessages();
             loadLead();
             loadFormEntries();
-            // load widget config toggle
-            fetch('/widget-config').then(r=>r.json()).then(c=>{ const cb=document.getElementById('toggleFormEnabled'); if(cb){ cb.checked = !!c.form_enabled; } });
+            // Dynamic form fields config (predefined safe set; admin chooses & sets required only)
             const cb=document.getElementById('toggleFormEnabled');
-            if(cb){
-                cb.addEventListener('change', async ()=>{
-                    try {
-                        const res = await fetch('/widget-config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ form_enabled: cb.checked })});
-                        if(res.ok){
-                            document.getElementById('widgetConfigStatus').textContent = 'Saved';
-                            try { localStorage.setItem('widget_config_version', Date.now().toString()); } catch(_){}
-                            setTimeout(()=>{document.getElementById('widgetConfigStatus').textContent='';},1500);
-                        } else {
-                            document.getElementById('widgetConfigStatus').textContent = 'Error saving';
-                        }
-                    } catch(e){ document.getElementById('widgetConfigStatus').textContent = 'Network error'; }
+            const container=document.getElementById('formFieldsContainer');
+            const addBtn=document.getElementById('addFieldBtn');
+            const PREDEFINED=[
+                {kind:'name', label:'Your Name', name:'name', type:'text', placeholder:'Optional name', required:false},
+                {kind:'email', label:'Email', name:'email', type:'email', placeholder:'you@example.com', required:true},
+                {kind:'company', label:'Company', name:'company', type:'text', placeholder:'Acme Inc.', required:false},
+                {kind:'phone', label:'Phone', name:'phone', type:'text', placeholder:'+1 555 123 4567', required:false},
+                {kind:'country', label:'Country', name:'country', type:'text', placeholder:'Country', required:false}
+            ];
+            let currentFields=[];
+            function findPreset(kind){ return PREDEFINED.find(p=>p.kind===kind)||PREDEFINED[0]; }
+            function ensureDefaults(f){
+                // Map legacy fields without kind
+                if(!f.kind){
+                    const match=PREDEFINED.find(p=>p.name===f.name) || PREDEFINED[0];
+                    f.kind=match.kind;
+                }
+                return f;
+            }
+            function renderFields(){
+                if(!container) return;
+                if(!currentFields.length){ container.innerHTML='<p style="font-size:12px;color:#666;">No fields. Click "Add Field".</p>'; return; }
+                container.innerHTML='';
+                currentFields.sort((a,b)=>(a.order||0)-(b.order||0));
+                currentFields.forEach((f,idx)=>{
+                    ensureDefaults(f);
+                    const row=document.createElement('div');
+                    row.style.cssText='display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px;background:#f8f9fa;padding:6px;border-radius:4px;';
+                    const options=PREDEFINED.map(p=>`<option value="${p.kind}" ${p.kind===f.kind?'selected':''}>${p.label}</option>`).join('');
+                    row.innerHTML=`<select class="fld-kind" style="padding:4px;min-width:130px;">${options}</select>
+                    <span style="font-size:13px;">as</span>
+                    <label style="font-size:11px;display:flex;align-items:center;gap:4px;">
+                        <input type="checkbox" class="fld-req" ${f.required?'checked':''}/> required
+                    </label>
+                    <input type="number" value="${f.order||idx}" style="width:60px;padding:4px;" class="fld-order" />
+                    <button type="button" class="btn-del" style="background:#dc3545;color:#fff;border:none;padding:4px 6px;border-radius:4px;cursor:pointer;">✕</button>`;
+                    container.appendChild(row);
+                    row.querySelector('.btn-del').onclick=()=>{ currentFields=currentFields.filter(x=>x!==f); renderFields(); persist(); };
+                    row.querySelector('.fld-kind').onchange=()=>{ const preset=findPreset(row.querySelector('.fld-kind').value); f.kind=preset.kind; f.label=preset.label; f.name=preset.name; f.type=preset.type; f.placeholder=preset.placeholder; renderFields(); persist(); };
+                    row.querySelector('.fld-req').onchange=()=>{ f.required=row.querySelector('.fld-req').checked; persist(); };
+                    row.querySelector('.fld-order').onchange=()=>{ f.order=parseInt(row.querySelector('.fld-order').value)||0; persist(); };
                 });
             }
+            let persistTimer=null;
+            async function persist(){
+                clearTimeout(persistTimer);
+                persistTimer=setTimeout(async()=>{
+                    try {
+                        const body={ form_enabled: cb.checked, fields: currentFields.map((f,i)=>({ ...f, order: f.order??i })) };
+                        const res= await fetch('/widget-config',{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+                        if(res.ok){ document.getElementById('widgetConfigStatus').textContent='Saved'; try { localStorage.setItem('widget_config_version', Date.now().toString()); } catch(_){ } setTimeout(()=>{document.getElementById('widgetConfigStatus').textContent='';},1200);} else { document.getElementById('widgetConfigStatus').textContent='Error'; }
+                    }catch(e){ document.getElementById('widgetConfigStatus').textContent='Network error'; }
+                },150);
+            }
+            if(addBtn){ addBtn.onclick=()=>{ const preset=PREDEFINED[0]; currentFields.push({...preset, order: currentFields.length}); renderFields(); persist(); }; }
+            if(cb){ cb.addEventListener('change', persist); }
+            fetch('/widget-config').then(r=>r.json()).then(c=>{ if(cb) cb.checked=!!c.form_enabled; currentFields=(c.fields||[]).map(ensureDefaults); renderFields(); });
         });
     </script>
 </body>
