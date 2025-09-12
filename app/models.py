@@ -97,3 +97,5 @@ class WidgetConfig(Base):
     form_fields: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # list of field definitions
     # Theme primary color (hex or CSS color). Note: adding columns in existing DBs may require a migration.
     primary_color: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Bot avatar image URL (served from /static/avatars or external URL)
+    avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)

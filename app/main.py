@@ -338,10 +338,15 @@ async def save_lead_api(lead_in: LeadIn, x_client_id: str | None = Header(defaul
 def _get_or_create_widget_config(db: Session) -> WidgetConfig:
     cfg = db.query(WidgetConfig).first()
     if not cfg:
-        cfg = WidgetConfig(form_enabled=True, primary_color="#0d6efd", form_fields=[
-            {"name":"name","label":"Your Name","type":"text","required":False,"placeholder":"Optional name","order":0},
-            {"name":"email","label":"Email","type":"email","required":True,"placeholder":"you@example.com","order":1}
-        ])
+        cfg = WidgetConfig(
+            form_enabled=True,
+            primary_color="#0d6efd",
+            avatar_url=None,
+            form_fields=[
+                {"name":"name","label":"Your Name","type":"text","required":False,"placeholder":"Optional name","order":0},
+                {"name":"email","label":"Email","type":"email","required":True,"placeholder":"you@example.com","order":1}
+            ]
+        )
         db.add(cfg)
         db.commit()
         db.refresh(cfg)
@@ -360,9 +365,18 @@ async def get_widget_config(db: Session = Depends(get_db)):
                 primary = meta['style'].get('primary_color')
         except Exception:
             primary = None
+    # Meta fallback for avatar
+    avatar_url = cfg.avatar_url
+    if not avatar_url:
+        try:
+            meta = next((f for f in fields_raw if isinstance(f, dict) and f.get('name')=='__config'), None)
+            if meta and isinstance(meta.get('style'), dict):
+                avatar_url = meta['style'].get('avatar_url')
+        except Exception:
+            avatar_url = None
     # Exclude meta from returned fields
     fields = [f for f in fields_raw if not (isinstance(f, dict) and f.get('name')=='__config')]
-    return WidgetConfigOut(form_enabled=cfg.form_enabled, fields=fields, primary_color=primary)
+    return WidgetConfigOut(form_enabled=cfg.form_enabled, fields=fields, primary_color=primary, avatar_url=avatar_url)
 
 @app.post("/widget-config", response_model=WidgetConfigOut)
 async def update_widget_config(data: WidgetConfigIn, db: Session = Depends(get_db), _: bool = Depends(require_admin)):
@@ -373,6 +387,10 @@ async def update_widget_config(data: WidgetConfigIn, db: Session = Depends(get_d
         color = data.primary_color.strip()
         if len(color) <= 32:
             cfg.primary_color = color
+    # avatar url (string); allow clearing with empty string
+    if data.avatar_url is not None:
+        val = data.avatar_url.strip()
+        cfg.avatar_url = val or None
     # store fields in deterministic order
     sorted_fields = sorted([f.dict() for f in data.fields], key=lambda x: (x.get('order',0), x.get('name','')))
     cfg.form_fields = sorted_fields
@@ -386,7 +404,7 @@ async def update_widget_config(data: WidgetConfigIn, db: Session = Depends(get_d
             fields = list(sorted_fields)
             # remove any existing meta
             fields = [f for f in fields if f.get('name') != '__config']
-            fields.append({'name':'__config','type':'meta','style':{'primary_color': data.primary_color}})
+            fields.append({'name':'__config','type':'meta','style':{'primary_color': data.primary_color, 'avatar_url': data.avatar_url}})
             cfg.form_fields = fields
             db.add(cfg)
             db.commit()
@@ -396,8 +414,35 @@ async def update_widget_config(data: WidgetConfigIn, db: Session = Depends(get_d
     # Build response from current state (with fallback meta if needed)
     fields_raw = cfg.form_fields or []
     primary = cfg.primary_color or (next((f for f in fields_raw if isinstance(f, dict) and f.get('name')=='__config'), {}).get('style',{}).get('primary_color'))
+    avatar_url = cfg.avatar_url or (next((f for f in fields_raw if isinstance(f, dict) and f.get('name')=='__config'), {}).get('style',{}).get('avatar_url'))
     fields = [f for f in fields_raw if not (isinstance(f, dict) and f.get('name')=='__config')]
-    return WidgetConfigOut(form_enabled=cfg.form_enabled, fields=fields, primary_color=primary)
+    return WidgetConfigOut(form_enabled=cfg.form_enabled, fields=fields, primary_color=primary, avatar_url=avatar_url)
+
+# Avatar upload endpoint (stores under /static/avatars and returns the public URL)
+AVATAR_DIR = Path("static/avatars")
+AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+
+@app.post("/widget-config/avatar")
+async def upload_avatar(file: UploadFile = File(...), db: Session = Depends(get_db), _: bool = Depends(require_admin)):
+    try:
+        ext = Path(file.filename).suffix.lower()
+        if ext not in {".png",".jpg",".jpeg",".gif",".webp",".svg"}:
+            raise HTTPException(status_code=400, detail="Unsupported image type")
+        # Save with a simple unique name
+        filename = f"bot_{int(__import__('time').time())}{ext}"
+        out_path = AVATAR_DIR / filename
+        with open(out_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        url = f"/static/avatars/{filename}"
+        # Optionally set as current avatar
+        cfg = _get_or_create_widget_config(db)
+        cfg.avatar_url = url
+        db.add(cfg); db.commit(); db.refresh(cfg)
+        return {"url": url}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 # Dynamic form submission (generic) - optional future replacement for /lead
 @app.post("/form/submit")
@@ -702,10 +747,18 @@ async def get_chat_interface():
         
         <div class="section">
             <h2>Widget Theme</h2>
-            <div style="display:flex;align-items:center;gap:10px;margin:8px 0 10px;">
-                <label style="font-size:13px;color:#555;">Primary color:</label>
-                <input type="color" id="primaryColorPicker" value="#0d6efd" />
-                <input type="text" id="primaryColorHex" value="#0d6efd" style="width:110px;padding:4px;border:1px solid #ccc;border-radius:4px;font-size:12px;"/>
+            <div style="display:flex;align-items:center;gap:10px;margin:8px 0 10px;flex-wrap:wrap;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <label style="font-size:13px;color:#555;">Primary color:</label>
+                    <input type="color" id="primaryColorPicker" value="#0d6efd" />
+                    <input type="text" id="primaryColorHex" value="#0d6efd" style="width:110px;padding:4px;border:1px solid #ccc;border-radius:4px;font-size:12px;"/>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <label style="font-size:13px;color:#555;">Bot avatar:</label>
+                    <input type="file" id="avatarFile" accept="image/*" />
+                    <button id="uploadAvatarBtn" type="button">Upload</button>
+                    <img id="avatarPreview" src="" alt="Avatar preview" style="width:34px;height:34px;border-radius:50%;object-fit:cover;border:1px solid #ddd;display:none;"/>
+                </div>
             </div>
             <div id="themeStatus" style="font-size:12px;margin-bottom:10px;color:#198754;"></div>
         </div>
@@ -1113,6 +1166,9 @@ async def get_chat_interface():
             const colorInput=document.getElementById('primaryColorPicker');
             const colorHex=document.getElementById('primaryColorHex');
             const themeStatus=document.getElementById('themeStatus');
+            const avatarFile=document.getElementById('avatarFile');
+            const uploadAvatarBtn=document.getElementById('uploadAvatarBtn');
+            const avatarPreview=document.getElementById('avatarPreview');
             const container=document.getElementById('formFieldsContainer');
             const addBtn=document.getElementById('addFieldBtn');
             const PREDEFINED=[
@@ -1185,7 +1241,26 @@ async def get_chat_interface():
             function syncColorInputs(val){ colorInput.value = val; colorHex.value = val; }
             if(colorInput){ colorInput.addEventListener('input', ()=>{ colorHex.value=colorInput.value; persist(); }); }
             if(colorHex){ colorHex.addEventListener('change', ()=>{ let v=colorHex.value.trim(); if(!v.startsWith('#') && /^([0-9a-fA-F]{6}|[0-9a-fA-F]{3})$/.test(v)) v='#'+v; syncColorInputs(v); persist(); }); }
-            fetch('/widget-config').then(r=>r.json()).then(c=>{ if(cb) cb.checked=!!c.form_enabled; const pc = (c.primary_color||'#0d6efd'); syncColorInputs(pc); currentFields=(c.fields||[]).map(ensureDefaults); renderFields(); });
+            async function uploadAvatar(){
+                if(!avatarFile.files || !avatarFile.files[0]) return;
+                const fd = new FormData();
+                fd.append('file', avatarFile.files[0]);
+                try{
+                    themeStatus.textContent='Uploading...';
+                    const res = await fetch('/widget-config/avatar', { method:'POST', body: fd });
+                    const data = await res.json();
+                    if(res.ok && data.url){
+                        avatarPreview.src = data.url; avatarPreview.style.display='inline-block';
+                        // Save avatar_url into config too (idempotent with server setting)
+                        await persist();
+                        themeStatus.textContent='Uploaded'; setTimeout(()=> themeStatus.textContent='', 1200);
+                    } else {
+                        themeStatus.textContent='Upload failed';
+                    }
+                }catch(e){ themeStatus.textContent='Network error'; }
+            }
+            if(uploadAvatarBtn){ uploadAvatarBtn.onclick=uploadAvatar; }
+            fetch('/widget-config').then(r=>r.json()).then(c=>{ if(cb) cb.checked=!!c.form_enabled; const pc = (c.primary_color||'#0d6efd'); syncColorInputs(pc); if(c.avatar_url){ avatarPreview.src=c.avatar_url; avatarPreview.style.display='inline-block'; } currentFields=(c.fields||[]).map(ensureDefaults); renderFields(); });
         });
     </script>
 </body>
