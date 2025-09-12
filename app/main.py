@@ -338,7 +338,7 @@ async def save_lead_api(lead_in: LeadIn, x_client_id: str | None = Header(defaul
 def _get_or_create_widget_config(db: Session) -> WidgetConfig:
     cfg = db.query(WidgetConfig).first()
     if not cfg:
-        cfg = WidgetConfig(form_enabled=True, form_fields=[
+        cfg = WidgetConfig(form_enabled=True, primary_color="#0d6efd", form_fields=[
             {"name":"name","label":"Your Name","type":"text","required":False,"placeholder":"Optional name","order":0},
             {"name":"email","label":"Email","type":"email","required":True,"placeholder":"you@example.com","order":1}
         ])
@@ -350,19 +350,54 @@ def _get_or_create_widget_config(db: Session) -> WidgetConfig:
 @app.get("/widget-config", response_model=WidgetConfigOut)
 async def get_widget_config(db: Session = Depends(get_db)):
     cfg = _get_or_create_widget_config(db)
-    fields = cfg.form_fields or []
-    return WidgetConfigOut(form_enabled=cfg.form_enabled, fields=fields)
+    fields_raw = cfg.form_fields or []
+    # Back-compat: allow storing theme color inside a special meta object in form_fields
+    primary = cfg.primary_color
+    if not primary:
+        try:
+            meta = next((f for f in fields_raw if isinstance(f, dict) and f.get('name')=='__config'), None)
+            if meta and isinstance(meta.get('style'), dict):
+                primary = meta['style'].get('primary_color')
+        except Exception:
+            primary = None
+    # Exclude meta from returned fields
+    fields = [f for f in fields_raw if not (isinstance(f, dict) and f.get('name')=='__config')]
+    return WidgetConfigOut(form_enabled=cfg.form_enabled, fields=fields, primary_color=primary)
 
 @app.post("/widget-config", response_model=WidgetConfigOut)
 async def update_widget_config(data: WidgetConfigIn, db: Session = Depends(get_db), _: bool = Depends(require_admin)):
     cfg = _get_or_create_widget_config(db)
     cfg.form_enabled = data.form_enabled
+    # basic color validation: allow hex like #RRGGBB/#RGB or color names
+    if data.primary_color:
+        color = data.primary_color.strip()
+        if len(color) <= 32:
+            cfg.primary_color = color
     # store fields in deterministic order
-    cfg.form_fields = sorted([f.dict() for f in data.fields], key=lambda x: (x.get('order',0), x.get('name','')))
+    sorted_fields = sorted([f.dict() for f in data.fields], key=lambda x: (x.get('order',0), x.get('name','')))
+    cfg.form_fields = sorted_fields
     db.add(cfg)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        # Column may not exist in existing DBs; fallback to storing in meta inside form_fields
+        db.rollback()
+        try:
+            fields = list(sorted_fields)
+            # remove any existing meta
+            fields = [f for f in fields if f.get('name') != '__config']
+            fields.append({'name':'__config','type':'meta','style':{'primary_color': data.primary_color}})
+            cfg.form_fields = fields
+            db.add(cfg)
+            db.commit()
+        except Exception:
+            db.rollback()
     db.refresh(cfg)
-    return WidgetConfigOut(form_enabled=cfg.form_enabled, fields=cfg.form_fields or [])
+    # Build response from current state (with fallback meta if needed)
+    fields_raw = cfg.form_fields or []
+    primary = cfg.primary_color or (next((f for f in fields_raw if isinstance(f, dict) and f.get('name')=='__config'), {}).get('style',{}).get('primary_color'))
+    fields = [f for f in fields_raw if not (isinstance(f, dict) and f.get('name')=='__config')]
+    return WidgetConfigOut(form_enabled=cfg.form_enabled, fields=fields, primary_color=primary)
 
 # Dynamic form submission (generic) - optional future replacement for /lead
 @app.post("/form/submit")
@@ -665,6 +700,16 @@ async def get_chat_interface():
             <div id="status" class="status"></div>
         </div>
         
+        <div class="section">
+            <h2>Widget Theme</h2>
+            <div style="display:flex;align-items:center;gap:10px;margin:8px 0 10px;">
+                <label style="font-size:13px;color:#555;">Primary color:</label>
+                <input type="color" id="primaryColorPicker" value="#0d6efd" />
+                <input type="text" id="primaryColorHex" value="#0d6efd" style="width:110px;padding:4px;border:1px solid #ccc;border-radius:4px;font-size:12px;"/>
+            </div>
+            <div id="themeStatus" style="font-size:12px;margin-bottom:10px;color:#198754;"></div>
+        </div>
+
         <div class="section">
             <h2>Visitor Form Config</h2>
             <label style="display:flex;align-items:center;gap:8px;font-size:14px;margin-bottom:6px;">
@@ -1065,6 +1110,9 @@ async def get_chat_interface():
             loadFormEntries();
             // Dynamic form fields config (predefined safe set; admin chooses & sets required only)
             const cb=document.getElementById('toggleFormEnabled');
+            const colorInput=document.getElementById('primaryColorPicker');
+            const colorHex=document.getElementById('primaryColorHex');
+            const themeStatus=document.getElementById('themeStatus');
             const container=document.getElementById('formFieldsContainer');
             const addBtn=document.getElementById('addFieldBtn');
             const PREDEFINED=[
@@ -1113,15 +1161,31 @@ async def get_chat_interface():
                 clearTimeout(persistTimer);
                 persistTimer=setTimeout(async()=>{
                     try {
-                        const body={ form_enabled: cb.checked, fields: currentFields.map((f,i)=>({ ...f, order: f.order??i })) };
+                        const body={ form_enabled: cb.checked, primary_color: (colorHex.value||'').trim(), fields: currentFields.map((f,i)=>({ ...f, order: f.order??i })) };
                         const res= await fetch('/widget-config',{method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
-                        if(res.ok){ document.getElementById('widgetConfigStatus').textContent='Saved'; try { localStorage.setItem('widget_config_version', Date.now().toString()); } catch(_){ } setTimeout(()=>{document.getElementById('widgetConfigStatus').textContent='';},1200);} else { document.getElementById('widgetConfigStatus').textContent='Error'; }
-                    }catch(e){ document.getElementById('widgetConfigStatus').textContent='Network error'; }
+                        if(res.ok){
+                            const okMsg='Saved';
+                            const errEl=document.getElementById('widgetConfigStatus'); if(errEl) { errEl.textContent=okMsg; setTimeout(()=>{errEl.textContent='';},1200); }
+                            if(themeStatus){ themeStatus.textContent=okMsg; setTimeout(()=>{themeStatus.textContent='';},1200); }
+                            try { localStorage.setItem('widget_config_version', Date.now().toString()); } catch(_){ }
+                        } else {
+                            const msg='Error';
+                            const errEl=document.getElementById('widgetConfigStatus'); if(errEl) errEl.textContent=msg;
+                            if(themeStatus) themeStatus.textContent=msg;
+                        }
+                    }catch(e){
+                        const msg='Network error';
+                        const errEl=document.getElementById('widgetConfigStatus'); if(errEl) errEl.textContent=msg;
+                        if(themeStatus) themeStatus.textContent=msg;
+                    }
                 },150);
             }
             if(addBtn){ addBtn.onclick=()=>{ const preset=PREDEFINED[0]; currentFields.push({...preset, order: currentFields.length}); renderFields(); persist(); }; }
             if(cb){ cb.addEventListener('change', persist); }
-            fetch('/widget-config').then(r=>r.json()).then(c=>{ if(cb) cb.checked=!!c.form_enabled; currentFields=(c.fields||[]).map(ensureDefaults); renderFields(); });
+            function syncColorInputs(val){ colorInput.value = val; colorHex.value = val; }
+            if(colorInput){ colorInput.addEventListener('input', ()=>{ colorHex.value=colorInput.value; persist(); }); }
+            if(colorHex){ colorHex.addEventListener('change', ()=>{ let v=colorHex.value.trim(); if(!v.startsWith('#') && /^([0-9a-fA-F]{6}|[0-9a-fA-F]{3})$/.test(v)) v='#'+v; syncColorInputs(v); persist(); }); }
+            fetch('/widget-config').then(r=>r.json()).then(c=>{ if(cb) cb.checked=!!c.form_enabled; const pc = (c.primary_color||'#0d6efd'); syncColorInputs(pc); currentFields=(c.fields||[]).map(ensureDefaults); renderFields(); });
         });
     </script>
 </body>

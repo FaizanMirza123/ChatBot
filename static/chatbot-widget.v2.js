@@ -2,10 +2,11 @@
   const STYLE_ID='chatbot-widget-style';
   const WIDGET_ID='chatbot-widget-root';
   function injectStyles(){ let s=document.getElementById(STYLE_ID); if(!s){ s=document.createElement('style'); s.id=STYLE_ID; document.head.appendChild(s);} s.textContent=`
-    .cb-floating-button{position:fixed;bottom:20px;right:20px;z-index:2147483000;width:56px;height:56px;border-radius:50%;background:#0d6efd;color:#fff;border:none;cursor:pointer;box-shadow:0 6px 18px rgba(13,110,253,0.35);display:flex;align-items:center;justify-content:center;font-size:22px}
-  .cb-panel{position:fixed;bottom:86px;right:20px;z-index:2147483000;width:380px;height:72vh;min-height:360px;background:#fff;color:#111;border-radius:12px;box-shadow:0 10px 28px rgba(0,0,0,0.18);display:none;flex-direction:column;overflow:hidden;border:1px solid #e9ecef}
+    #${WIDGET_ID}{--cb-primary:#0d6efd}
+    .cb-floating-button{position:fixed;bottom:20px;right:20px;z-index:2147483000;width:56px;height:56px;border-radius:50%;background:var(--cb-primary,#0d6efd);color:#fff;border:none;cursor:pointer;box-shadow:0 6px 18px rgba(13,110,253,0.35);display:flex;align-items:center;justify-content:center;font-size:22px}
+    .cb-panel{position:fixed;bottom:86px;right:20px;z-index:2147483000;width:380px;height:72vh;min-height:360px;background:#fff;color:#111;border-radius:12px;box-shadow:0 10px 28px rgba(0,0,0,0.18);display:none;flex-direction:column;overflow:hidden;border:1px solid #e9ecef}
     .cb-panel.open{display:flex}
-    .cb-header{padding:12px 14px;background:#0d6efd;color:#fff;display:flex;align-items:center;justify-content:space-between}
+    .cb-header{padding:12px 14px;background:var(--cb-primary,#0d6efd);color:#fff;display:flex;align-items:center;justify-content:space-between}
     .cb-title{font-weight:700;font-size:15px}
     .cb-close{background:transparent;border:0;color:#fff;cursor:pointer;font-size:18px}
   .cb-section{padding:16px 16px;background:#fafafa;border-bottom:1px solid #e9ecef}
@@ -13,7 +14,7 @@
   .cb-note{font-size:13px;color:#6c757d;text-align:center;margin:0 0 12px}
   .cb-form{display:flex;flex-direction:column;gap:14px;align-items:stretch;min-height:180px}
   .cb-form input,.cb-form textarea{padding:10px;border:1px solid #ced4da;border-radius:6px;font-size:14px;width:100%;box-sizing:border-box}
-  .cb-btn{background:#0d6efd;color:#fff;border:none;border-radius:6px;padding:10px 16px;cursor:pointer;align-self:center;margin-top:auto}
+    .cb-btn{background:var(--cb-primary,#0d6efd);color:#fff;border:none;border-radius:6px;padding:10px 16px;cursor:pointer;align-self:center;margin-top:auto}
   @media (max-width:420px){.cb-btn{align-self:center;width:auto}}
     .cb-status{font-size:12px;margin-top:6px}
     .cb-status.error{color:#c1121f}
@@ -24,9 +25,9 @@
     .cb-message{margin:8px 0;padding:10px;border-radius:8px;line-height:1.38;font-size:14px}
     .cb-message.user{background:#e7f1ff;margin-left:15%}
     .cb-message.assistant{background:#eef7e9;margin-right:15%}
-  .cb-input{display:flex;gap:8px;padding:10px;border-top:1px solid #e9ecef;background:#fff;flex-shrink:0}
+    .cb-input{display:flex;gap:8px;padding:10px;border-top:1px solid #e9ecef;background:#fff;flex-shrink:0}
     .cb-input input{flex:1;padding:10px;border:1px solid #ced4da;border-radius:6px;font-size:14px}
-    .cb-input button{background:#0d6efd;color:#fff;border:none;border-radius:6px;padding:10px 12px;cursor:pointer}
+    .cb-input button{background:var(--cb-primary,#0d6efd);color:#fff;border:none;border-radius:6px;padding:10px 12px;cursor:pointer}
   `; }  
   function createRoot(){ let existing=document.getElementById(WIDGET_ID); if(existing) return existing; const r=document.createElement('div'); r.id=WIDGET_ID; document.body.appendChild(r); return r; }
   function ChatbotWidget(opts){
@@ -116,7 +117,7 @@
   function getFieldEl(name){ return Array.from(formRow.querySelectorAll('[data-field-name]')).find(i=>i.dataset.fieldName===name); }
   async function loadLead(){ try{ const lead=await api('lead'); if(lead && lead.email){ const nameEl=getFieldEl('name'); const emailEl=getFieldEl('email'); if(nameEl) nameEl.value=lead.name||''; if(emailEl) emailEl.value=lead.email||''; leadSaved=true; updateVisibility(); } }catch(_){ } }
   async function applyFormEnabled(flag){ if(flag){ if(currentFormEnabled===null){ await loadLead(); } } else { leadSaved=true; } currentFormEnabled=flag; updateVisibility(); }
-  async function refreshConfig(){ try{ const wc=await api('widget-config'); if(!wc) return; dynamicFields=Array.isArray(wc.fields)?wc.fields:[]; rebuildFormFields(); const desired=!!wc.form_enabled; if(desired!==currentFormEnabled){ await applyFormEnabled(desired);} else { updateVisibility(); } }catch(_){ } }
+  async function refreshConfig(){ try{ const wc=await api('widget-config'); if(!wc) return; dynamicFields=Array.isArray(wc.fields)?wc.fields:[]; rebuildFormFields(); if(wc.primary_color){ try{ root.style.setProperty('--cb-primary', wc.primary_color); }catch(_){} } const desired=!!wc.form_enabled; if(desired!==currentFormEnabled){ await applyFormEnabled(desired);} else { updateVisibility(); } }catch(_){ } }
     (async()=>{ await refreshConfig(); })();
     let poll=null; function startPoll(){ if(poll) return; poll=setInterval(refreshConfig,20000);} function stopPoll(){ if(poll){ clearInterval(poll); poll=null; }}
     btn.onclick=async()=>{ const was=panel.classList.contains('open'); if(!was){ await refreshConfig().catch(()=>{});} panel.classList.toggle('open'); if(!was) startPoll(); else stopPoll(); };

@@ -87,7 +87,9 @@ class FormField(BaseModel):
 class WidgetConfigOut(BaseModel):
     form_enabled: bool
     fields: List[FormField] = []
+    primary_color: Optional[str] = None
 
 class WidgetConfigIn(BaseModel):
     form_enabled: bool
     fields: List[FormField] = []
+    primary_color: Optional[str] = None
