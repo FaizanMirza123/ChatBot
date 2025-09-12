@@ -1,5 +1,5 @@
 import { Sidebar } from '@/components/layout/sidebar'
-import { Header } from '@/components/layout/header'
+import { TestChat } from '@/components/chat/test-chat'
 
 export default function DashboardLayout({
   children,
@@ -11,6 +11,7 @@ export default function DashboardLayout({
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
         {children}
+        <TestChat />
       </div>
     </div>
   )

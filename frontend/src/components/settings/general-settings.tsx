@@ -1,22 +1,79 @@
 "use client"
 
 import React, { useState } from 'react'
+import { useApi, useAsyncAction } from '@/hooks/useApi'
+import { apiClient } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 
 export function GeneralSettings() {
-  const [botName, setBotName] = useState('Botify')
+  const [botName, setBotName] = useState('')
   const [description, setDescription] = useState('')
+  const [hasChanges, setHasChanges] = useState(false)
 
-  const handleSave = () => {
-    // Handle save logic here
-    console.log('Saving settings:', { botName, description })
+  // Load current system prompt
+  const { data: systemPrompt, loading, error, refetch } = useApi(
+    () => apiClient.getSystemPrompt(),
+    []
+  )
+
+  // Update system prompt action
+  const { execute: updatePrompt, loading: updating, error: updateError } = useAsyncAction(
+    (text: string) => apiClient.updateSystemPrompt(text)
+  )
+
+  // Initialize form with loaded data
+  React.useEffect(() => {
+    if (systemPrompt && !hasChanges) {
+      // Extract bot name and description from system prompt if structured
+      // For now, just use the prompt text as description
+      setBotName('Botify') // Default name
+      setDescription(systemPrompt.text || '')
+    }
+  }, [systemPrompt, hasChanges])
+
+  const handleSave = async () => {
+    const success = await updatePrompt(description)
+    if (success) {
+      setHasChanges(false)
+      refetch()
+    }
   }
 
   const handleDiscard = () => {
-    setBotName('Botify')
-    setDescription('')
+    if (systemPrompt) {
+      setBotName('Botify')
+      setDescription(systemPrompt.text || '')
+      setHasChanges(false)
+    }
+  }
+
+  const handleBotNameChange = (value: string) => {
+    setBotName(value)
+    setHasChanges(true)
+  }
+
+  const handleDescriptionChange = (value: string) => {
+    setDescription(value)
+    setHasChanges(true)
+  }
+
+  if (loading) {
+    return (
+      <div className="flex-1 p-8">
+        <div className="max-w-2xl">
+          <div className="animate-pulse">
+            <div className="h-4 bg-gray-200 rounded w-3/4 mb-4"></div>
+            <div className="h-4 bg-gray-200 rounded w-1/2 mb-8"></div>
+            <div className="space-y-4">
+              <div className="h-10 bg-gray-200 rounded"></div>
+              <div className="h-32 bg-gray-200 rounded"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -26,6 +83,16 @@ export function GeneralSettings() {
           <h2 className="text-lg font-medium text-gray-900 mb-2">
             Configure your bot according to your needs
           </h2>
+          {error && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+              <p className="text-sm text-red-600">Error loading settings: {error}</p>
+            </div>
+          )}
+          {updateError && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+              <p className="text-sm text-red-600">Error saving: {updateError}</p>
+            </div>
+          )}
         </div>
 
         <div className="space-y-8">
@@ -39,7 +106,7 @@ export function GeneralSettings() {
             </p>
             <Input
               value={botName}
-              onChange={(e) => setBotName(e.target.value)}
+              onChange={(e) => handleBotNameChange(e.target.value)}
               className="max-w-md"
               placeholder="Enter bot name"
             />
@@ -55,9 +122,9 @@ export function GeneralSettings() {
             </p>
             <Textarea
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(e) => handleDescriptionChange(e.target.value)}
               className="max-w-2xl min-h-[120px]"
-              placeholder="Enter bot description"
+              placeholder="Enter system prompt for your bot..."
             />
           </div>
         </div>
@@ -67,15 +134,17 @@ export function GeneralSettings() {
           <Button 
             variant="outline" 
             onClick={handleDiscard}
+            disabled={!hasChanges || updating}
             className="text-gray-600"
           >
             Discard changes
           </Button>
           <Button 
             onClick={handleSave}
+            disabled={!hasChanges || updating}
             className="bg-indigo-600 hover:bg-indigo-700"
           >
-            Save changes
+            {updating ? 'Saving...' : 'Save changes'}
           </Button>
         </div>
       </div>
