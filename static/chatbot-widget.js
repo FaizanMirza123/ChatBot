@@ -123,7 +123,6 @@
         addMessage('assistant', 'Error: ' + (e && e.message ? e.message : 'Failed to reach API'));
       }
     }
-
     // DOM
     const root = createWidgetRoot();
     root.innerHTML = '';
@@ -133,31 +132,111 @@
     const header = el('div', 'cb-header');
     const title = el('div', 'cb-title', cfg.title);
     const close = el('button', 'cb-close', '×');
+
+    // Visitor Info Form (optional; email required if saving)
+    const formSection = el('div', null);
+    formSection.style.padding = '16px';
+    formSection.style.background = '#fafafa';
+    formSection.style.borderBottom = '1px solid #e9ecef';
+    const formTitle = el('div', null, 'Visitor Info');
+    formTitle.style.fontWeight = 'bold';
+    formTitle.style.marginBottom = '8px';
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.placeholder = 'Your name (optional)';
+    nameInput.style.marginRight = '8px';
+    nameInput.style.width = '40%';
+    const emailInput = document.createElement('input');
+    emailInput.type = 'email';
+    emailInput.placeholder = 'Your email (required to save)';
+    emailInput.style.marginRight = '8px';
+    emailInput.style.width = '40%';
+    const saveBtn = el('button', null, 'Save');
+    saveBtn.style.background = '#0d6efd';
+    saveBtn.style.color = '#fff';
+    saveBtn.style.border = 'none';
+    saveBtn.style.borderRadius = '6px';
+    saveBtn.style.padding = '8px 16px';
+    saveBtn.style.cursor = 'pointer';
+    const formStatus = el('div', null, '');
+    formStatus.style.color = '#d63384';
+    formStatus.style.fontSize = '13px';
+    formStatus.style.marginTop = '6px';
+
+    formSection.appendChild(formTitle);
+    formSection.appendChild(nameInput);
+    formSection.appendChild(emailInput);
+    formSection.appendChild(saveBtn);
+    formSection.appendChild(formStatus);
+
+    // Chat UI
     const messages = el('div', 'cb-messages');
     const inputBar = el('div', 'cb-input');
-    const input = document.createElement('input'); input.placeholder = 'Type your message...';
+    const input = document.createElement('input');
+    input.placeholder = 'Type your message...';
     const send = el('button', null, 'Send');
+    inputBar.appendChild(input);
+    inputBar.appendChild(send);
 
-    inputBar.appendChild(input); inputBar.appendChild(send);
-    header.appendChild(title); header.appendChild(close);
-  panel.appendChild(header); panel.appendChild(messages); panel.appendChild(inputBar);
-    root.appendChild(btn); root.appendChild(panel);
+    header.appendChild(title);
+    header.appendChild(close);
+    panel.appendChild(header);
+    panel.appendChild(formSection);
+    panel.appendChild(messages);
+    panel.appendChild(inputBar);
+    root.appendChild(btn);
+    root.appendChild(panel);
 
     btn.onclick = () => panel.classList.toggle('open');
     close.onclick = () => panel.classList.remove('open');
     send.onclick = sendMessage;
     input.addEventListener('keydown', e => { if (e.key === 'Enter') sendMessage(); });
 
-    // init
+    // Save visitor info (optional)
+    saveBtn.onclick = async function () {
+      const name = nameInput.value.trim();
+      const email = emailInput.value.trim();
+      if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+        formStatus.textContent = 'Please enter a valid email.';
+        formStatus.style.color = '#d63384';
+        return;
+      }
+      try {
+        await api('lead', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email, client_id: getClientId() })
+        });
+        formStatus.textContent = 'Saved';
+        formStatus.style.color = '#198754';
+      } catch (e) {
+        formStatus.textContent = 'Error: ' + (e && e.message ? e.message : 'Could not save info');
+        formStatus.style.color = '#d63384';
+      }
+    };
+
+    // Prefill form if lead exists
+    (async function prefillForm() {
+      try {
+        const lead = await api('lead');
+        if (lead && lead.email) {
+          nameInput.value = lead.name || '';
+          emailInput.value = lead.email || '';
+          formStatus.textContent = '';
+        }
+      } catch (e) {
+        // no saved lead; leave blank
+      }
+    })();
+
+    // Initial load
     injectStyles();
-  // Load messages initially (API may be empty on first run)
-  loadMessages().catch(e => console.warn('Widget init: could not load messages', e));
+    loadMessages().catch(e => console.warn('Widget init: could not load messages', e));
 
     // public API
     return {
       open: () => panel.classList.add('open'),
-      close: () => panel.classList.remove('open'),
-  // no multi-session controls in single-session mode
+      close: () => panel.classList.remove('open')
     };
   }
 
