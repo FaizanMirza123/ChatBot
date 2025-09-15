@@ -2,3 +2,4 @@
 chatbot/
 .cache/
 app/__pycache__/
+frontend/
