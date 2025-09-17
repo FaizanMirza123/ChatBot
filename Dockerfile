@@ -64,5 +64,5 @@ PY
 
 EXPOSE 8000
 
-# Simple startup - let app handle DB initialization
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run migration and start the app
+CMD ["sh", "-c", "python migrate_appearance.py && uvicorn main:app --host 0.0.0.0 --port 8000"]

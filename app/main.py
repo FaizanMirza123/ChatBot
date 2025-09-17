@@ -6,15 +6,17 @@ from sqlalchemy.orm import Session
 from openai import OpenAI
 from config import settings
 from db import get_db, Base, engine
-from models import Prompt, KnowledgeDocument, Message, User, Session as ChatSession, Lead, WidgetConfig
+from models import Prompt, KnowledgeDocument, Message, User, Session as ChatSession, Lead, WidgetConfig, FAQ, DocumentVisibility
 from schemas import ChatIn, ChatOut, SystemPromptIn, SystemPromptOut, DocumentUploadOut, DocumentListOut, DocumentDeleteOut
 from schemas import LeadIn, LeadOut, WidgetConfigOut, WidgetConfigIn
-from schemas import FormField
+from schemas import FormField, BotConfigOut, BotConfigIn
 from services.rag_service import RAGService
 from utils.token_counter import trim_history_to_token_budget
 import os
 import shutil
 from pathlib import Path
+import csv
+from io import StringIO
 
 app = FastAPI()
 client = OpenAI(api_key=settings.OPENAI_API_KEY)
@@ -342,6 +344,14 @@ def _get_or_create_widget_config(db: Session) -> WidgetConfig:
             form_enabled=True,
             primary_color="#0d6efd",
             avatar_url=None,
+            bot_name="ChatBot",
+            widget_icon="💬",
+            widget_position="right",
+            input_placeholder="Type your message...",
+            subheading="Our bot answers instantly",
+            show_branding=True,
+            open_by_default=False,
+            starter_questions=True,
             form_fields=[
                 {"name":"name","label":"Your Name","type":"text","required":False,"placeholder":"Optional name","order":0},
                 {"name":"email","label":"Email","type":"email","required":True,"placeholder":"you@example.com","order":1}
@@ -376,7 +386,20 @@ async def get_widget_config(db: Session = Depends(get_db)):
             avatar_url = None
     # Exclude meta from returned fields
     fields = [f for f in fields_raw if not (isinstance(f, dict) and f.get('name')=='__config')]
-    return WidgetConfigOut(form_enabled=cfg.form_enabled, fields=fields, primary_color=primary, avatar_url=avatar_url)
+    return WidgetConfigOut(
+        form_enabled=cfg.form_enabled, 
+        fields=fields, 
+        primary_color=primary, 
+        avatar_url=avatar_url, 
+        bot_name=cfg.bot_name,
+        widget_icon=cfg.widget_icon,
+        widget_position=cfg.widget_position,
+        input_placeholder=cfg.input_placeholder,
+        subheading=cfg.subheading,
+        show_branding=cfg.show_branding,
+        open_by_default=cfg.open_by_default,
+        starter_questions=cfg.starter_questions
+    )
 
 @app.post("/widget-config", response_model=WidgetConfigOut)
 async def update_widget_config(data: WidgetConfigIn, db: Session = Depends(get_db), _: bool = Depends(require_admin)):
@@ -391,6 +414,24 @@ async def update_widget_config(data: WidgetConfigIn, db: Session = Depends(get_d
     if data.avatar_url is not None:
         val = data.avatar_url.strip()
         cfg.avatar_url = val or None
+    # bot name
+    if data.bot_name is not None:
+        cfg.bot_name = data.bot_name.strip() or "ChatBot"
+    # appearance settings
+    if data.widget_icon is not None:
+        cfg.widget_icon = data.widget_icon.strip() or "💬"
+    if data.widget_position is not None:
+        cfg.widget_position = data.widget_position.strip() or "right"
+    if data.input_placeholder is not None:
+        cfg.input_placeholder = data.input_placeholder.strip() or "Type your message..."
+    if data.subheading is not None:
+        cfg.subheading = data.subheading.strip() or None
+    if data.show_branding is not None:
+        cfg.show_branding = data.show_branding
+    if data.open_by_default is not None:
+        cfg.open_by_default = data.open_by_default
+    if data.starter_questions is not None:
+        cfg.starter_questions = data.starter_questions
     # store fields in deterministic order
     sorted_fields = sorted([f.dict() for f in data.fields], key=lambda x: (x.get('order',0), x.get('name','')))
     cfg.form_fields = sorted_fields
@@ -416,11 +457,42 @@ async def update_widget_config(data: WidgetConfigIn, db: Session = Depends(get_d
     primary = cfg.primary_color or (next((f for f in fields_raw if isinstance(f, dict) and f.get('name')=='__config'), {}).get('style',{}).get('primary_color'))
     avatar_url = cfg.avatar_url or (next((f for f in fields_raw if isinstance(f, dict) and f.get('name')=='__config'), {}).get('style',{}).get('avatar_url'))
     fields = [f for f in fields_raw if not (isinstance(f, dict) and f.get('name')=='__config')]
-    return WidgetConfigOut(form_enabled=cfg.form_enabled, fields=fields, primary_color=primary, avatar_url=avatar_url)
+    return WidgetConfigOut(
+        form_enabled=cfg.form_enabled, 
+        fields=fields, 
+        primary_color=primary, 
+        avatar_url=avatar_url, 
+        bot_name=cfg.bot_name,
+        widget_icon=cfg.widget_icon,
+        widget_position=cfg.widget_position,
+        input_placeholder=cfg.input_placeholder,
+        subheading=cfg.subheading,
+        show_branding=cfg.show_branding,
+        open_by_default=cfg.open_by_default,
+        starter_questions=cfg.starter_questions
+    )
+
+# Bot configuration endpoints
+@app.get("/bot-config", response_model=BotConfigOut)
+async def get_bot_config(db: Session = Depends(get_db)):
+    """Get bot configuration (bot name)"""
+    cfg = _get_or_create_widget_config(db)
+    return BotConfigOut(bot_name=cfg.bot_name or "ChatBot")
+
+@app.put("/bot-config", response_model=BotConfigOut)
+async def update_bot_config(data: BotConfigIn, db: Session = Depends(get_db), _: bool = Depends(require_admin)):
+    """Update bot configuration (bot name)"""
+    cfg = _get_or_create_widget_config(db)
+    cfg.bot_name = data.bot_name.strip() or "ChatBot"
+    db.add(cfg)
+    db.commit()
+    db.refresh(cfg)
+    return BotConfigOut(bot_name=cfg.bot_name)
 
 # Avatar upload endpoint (stores under /static/avatars and returns the public URL)
 AVATAR_DIR = Path("static/avatars")
 AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+
 
 @app.post("/widget-config/avatar")
 async def upload_avatar(file: UploadFile = File(...), db: Session = Depends(get_db), _: bool = Depends(require_admin)):
@@ -596,6 +668,42 @@ async def delete_document(document_id: int, db: Session = Depends(get_db), _: bo
             raise HTTPException(status_code=404, detail="Document not found")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error deleting document: {str(e)}")
+
+# Visibility endpoints
+@app.get("/documents/{document_id}/visibility")
+async def get_document_visibility(document_id: int, db: Session = Depends(get_db)):
+    try:
+        doc = db.query(KnowledgeDocument).filter(KnowledgeDocument.id == document_id).first()
+        if not doc:
+            raise HTTPException(status_code=404, detail="Document not found")
+        rec = db.query(DocumentVisibility).filter(DocumentVisibility.document_id == document_id).first()
+        return {"document_id": document_id, "is_public": bool(rec.is_public) if rec else False}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching visibility: {str(e)}")
+
+@app.post("/documents/{document_id}/visibility")
+async def set_document_visibility(document_id: int, payload: dict, db: Session = Depends(get_db), _: bool = Depends(require_admin)):
+    try:
+        doc = db.query(KnowledgeDocument).filter(KnowledgeDocument.id == document_id).first()
+        if not doc:
+            raise HTTPException(status_code=404, detail="Document not found")
+        is_public = bool(payload.get("is_public", False))
+        rec = db.query(DocumentVisibility).filter(DocumentVisibility.document_id == document_id).first()
+        if not rec:
+            rec = DocumentVisibility(document_id=document_id, is_public=is_public)
+            db.add(rec)
+        else:
+            rec.is_public = is_public
+            db.add(rec)
+        db.commit()
+        return {"document_id": document_id, "is_public": is_public}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error setting visibility: {str(e)}")
 
 @app.get("/", response_class=HTMLResponse)
 async def get_chat_interface():
@@ -1275,3 +1383,92 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+# ---------------------- FAQ endpoints ----------------------
+
+@app.post("/faqs/upload-csv")
+async def upload_faqs_csv(file: UploadFile = File(...), db: Session = Depends(get_db), _: bool = Depends(require_admin)):
+    try:
+        ext = Path(file.filename).suffix.lower()
+        if ext not in {".csv"}:
+            raise HTTPException(status_code=400, detail="Unsupported file type. Allowed: .csv")
+
+        content_bytes = await file.read()
+        try:
+            text = content_bytes.decode("utf-8")
+        except Exception:
+            try:
+                text = content_bytes.decode("latin-1")
+            except Exception:
+                raise HTTPException(status_code=400, detail="Unable to decode CSV. Use UTF-8 encoding.")
+
+        reader = csv.DictReader(StringIO(text))
+        required_cols = {"question", "answer"}
+        if not required_cols.issubset({(c or "").strip().lower() for c in (reader.fieldnames or [])}):
+            raise HTTPException(status_code=400, detail="CSV must have headers: question,answer")
+
+        headers = [h.strip().lower() for h in (reader.fieldnames or [])]
+        q_idx = headers.index("question")
+        a_idx = headers.index("answer")
+
+        created = 0
+        skipped = 0
+        for row in reader:
+            try:
+                values = list(row.values())
+                question = (values[q_idx] or "").strip()
+                answer = (values[a_idx] or "").strip()
+                if not question or not answer:
+                    skipped += 1
+                    continue
+                faq = FAQ(question=question, answer=answer)
+                db.add(faq)
+                created += 1
+            except Exception:
+                skipped += 1
+        if created:
+            db.commit()
+        return {"created": created, "skipped": skipped}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error uploading FAQs: {str(e)}")
+
+
+@app.get("/faqs")
+async def list_faqs(db: Session = Depends(get_db)):
+    try:
+        faqs = db.query(FAQ).order_by(FAQ.id.desc()).all()
+        return {"faqs": [{"id": f.id, "question": f.question, "answer": f.answer} for f in faqs]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error listing FAQs: {str(e)}")
+
+
+@app.delete("/faqs/{faq_id}")
+async def delete_faq(faq_id: int, db: Session = Depends(get_db), _: bool = Depends(require_admin)):
+    try:
+        faq = db.query(FAQ).filter(FAQ.id == faq_id).first()
+        if not faq:
+            raise HTTPException(status_code=404, detail="FAQ not found")
+        db.delete(faq)
+        db.commit()
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error deleting FAQ: {str(e)}")
+
+# Aliases under /api
+@app.post("/api/faqs/upload-csv")
+async def upload_faqs_csv_api(file: UploadFile = File(...), db: Session = Depends(get_db), _: bool = Depends(require_admin)):
+    return await upload_faqs_csv(file=file, db=db)
+
+@app.get("/api/faqs")
+async def list_faqs_api(db: Session = Depends(get_db)):
+    return await list_faqs(db=db)
+
+@app.delete("/api/faqs/{faq_id}")
+async def delete_faq_api(faq_id: int, db: Session = Depends(get_db), _: bool = Depends(require_admin)):
+    return await delete_faq(faq_id=faq_id, db=db)

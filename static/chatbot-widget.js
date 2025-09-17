@@ -7,34 +7,104 @@
     const style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent = `
+      :root { --cb-primary: #3B82F6; --cb-primary-dark: #2563EB; --cb-gray-50: #F9FAFB; --cb-gray-200: #E5E7EB; --cb-shadow: 0 1px 3px 0 rgba(0,0,0,0.1), 0 1px 2px 0 rgba(0,0,0,0.06); --cb-shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05); }
+      
       .cb-floating-button {
-        position: fixed; bottom: 20px; right: 20px; z-index: 2147483000;
-        width: 56px; height: 56px; border-radius: 50%;
-        background: #0d6efd; color: #fff; border: none; cursor: pointer;
-        box-shadow: 0 6px 18px rgba(13,110,253,0.35);
-        display: flex; align-items: center; justify-content: center; font-size: 22px;
+        position: fixed; bottom: 24px; right: 24px; z-index: 2147483000;
+        width: 60px; height: 60px; border-radius: 50%;
+        background: var(--cb-primary);
+        color: #fff; border: none; cursor: pointer;
+        box-shadow: var(--cb-shadow-lg);
+        display: flex; align-items: center; justify-content: center; font-size: 24px;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      .cb-floating-button:hover {
+        transform: scale(1.1);
+        box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
       }
       .cb-panel {
-        position: fixed; bottom: 86px; right: 20px; z-index: 2147483000;
-        width: 360px; max-height: 70vh; background: #fff; color: #111;
-        border-radius: 10px; box-shadow: 0 10px 28px rgba(0,0,0,0.18);
+        position: fixed; bottom: 96px; right: 24px; z-index: 2147483000;
+        width: 400px; height: 600px; max-height: 80vh; min-height: 500px;
+        background: #fff; color: #1F2937;
+        border-radius: 20px; box-shadow: var(--cb-shadow-lg);
         display: none; flex-direction: column; overflow: hidden;
-        border: 1px solid #e9ecef;
+        border: 1px solid var(--cb-gray-200);
+        transform: translateY(20px) scale(0.95); opacity: 0;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       }
-      .cb-panel.open { display: flex; }
-      .cb-header { padding: 10px 12px; background: #0d6efd; color: #fff; display:flex; align-items:center; justify-content: space-between; }
-      .cb-title { font-weight: 600; font-size: 14px; }
-      .cb-close { background: transparent; border: 0; color: #fff; cursor: pointer; font-size: 18px; }
-      .cb-messages { flex: 1; overflow-y: auto; padding: 12px; background: #f8f9fa; }
-      .cb-message { margin: 8px 0; padding: 10px; border-radius: 8px; line-height: 1.35; font-size: 14px; }
-      .cb-message.user { background: #e7f1ff; margin-left: 15%; }
-      .cb-message.assistant { background: #eef7e9; margin-right: 15%; }
-      .cb-input { display:flex; gap:8px; padding: 10px; border-top: 1px solid #e9ecef; }
-      .cb-input input { flex:1; padding: 10px; border:1px solid #ced4da; border-radius: 6px; font-size: 14px; }
-      .cb-input button { background:#0d6efd; color:#fff; border:none; border-radius:6px; padding: 10px 12px; cursor:pointer; }
-      .cb-sessions { padding: 8px 10px; background: #fff; border-bottom: 1px solid #e9ecef; display:flex; gap:6px; overflow-x:auto; }
-      .cb-session { background:#6f42c1; color:#fff; border:none; border-radius: 100px; padding:4px 8px; font-size: 11px; cursor:pointer; }
-      .cb-session.active { background:#198754; }
+      .cb-floating-button.left { left: 24px; right: auto; }
+      .cb-panel.left { bottom: 96px; left: 24px; right: auto; }
+      .cb-panel.open { display: flex; transform: translateY(0) scale(1); opacity: 1; }
+      
+      .cb-header { 
+        padding: 20px 24px; background: var(--cb-primary);
+        color: #fff; display: flex; align-items: center; justify-content: space-between;
+        border-radius: 20px 20px 0 0;
+      }
+      .cb-title { font-weight: 700; font-size: 18px; line-height: 1.2; }
+      .cb-close { 
+        background: rgba(255,255,255,0.1); border: 0; color: #fff;
+        cursor: pointer; font-size: 20px; width: 32px; height: 32px;
+        border-radius: 50%; display: flex; align-items: center; justify-content: center;
+        transition: all 0.2s ease;
+      }
+      .cb-close:hover { background: rgba(255,255,255,0.2); transform: scale(1.1); }
+      
+      .cb-messages { 
+        flex: 1; overflow-y: auto; padding: 20px; background: var(--cb-gray-50);
+        -webkit-overflow-scrolling: touch;
+      }
+      .cb-message { 
+        margin: 12px 0; line-height: 1.5; font-size: 14px;
+        animation: messageSlideIn 0.3s ease-out;
+      }
+      @keyframes messageSlideIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .cb-message.user { 
+        background: var(--cb-primary);
+        color: #fff; margin-left: 20%; padding: 12px 16px;
+        border-radius: 18px 18px 4px 18px; box-shadow: var(--cb-shadow);
+      }
+      .cb-message.assistant { 
+        background: #fff; margin-right: 20%; padding: 12px 16px;
+        border-radius: 18px 18px 18px 4px; box-shadow: var(--cb-shadow);
+        border: 1px solid var(--cb-primary); margin-top: 4px;
+      }
+      
+      .cb-input { 
+        display: flex; gap: 12px; padding: 20px;
+        border-top: 1px solid var(--cb-gray-200); background: #fff; flex-shrink: 0;
+      }
+      .cb-input input { 
+        flex: 1; padding: 12px 16px; border: 2px solid var(--cb-primary);
+        border-radius: 24px; font-size: 14px; background: #fff;
+        transition: all 0.2s ease;
+      }
+      .cb-input input:focus {
+        outline: none; border-color: var(--cb-primary);
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+      }
+      .cb-input button { 
+        background: var(--cb-primary);
+        color: #fff; border: none; border-radius: 50%;
+        width: 44px; height: 44px; cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        transition: all 0.2s ease; box-shadow: var(--cb-shadow);
+        position: relative;
+      }
+      .cb-input button svg {
+        width: 24px; height: 24px; fill: currentColor;
+      }
+      .cb-input button:hover { transform: scale(1.05); }
+      
+      @media (max-width: 480px) {
+        .cb-panel { width: calc(100vw - 48px); right: 24px; left: 24px; }
+        .cb-panel.left { left: 24px; right: 24px; }
+        .cb-message.user { margin-left: 10%; }
+        .cb-message.assistant { margin-right: 10%; }
+      }
     `;
     document.head.appendChild(style);
   }
@@ -174,7 +244,11 @@
     const inputBar = el('div', 'cb-input');
     const input = document.createElement('input');
     input.placeholder = 'Type your message...';
-    const send = el('button', null, 'Send');
+    const send = el('button', null, '');
+    const sendIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    sendIcon.setAttribute('viewBox', '0 0 24 24');
+    sendIcon.innerHTML = '<path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>';
+    send.appendChild(sendIcon);
     inputBar.appendChild(input);
     inputBar.appendChild(send);
 

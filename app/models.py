@@ -71,6 +71,13 @@ class DocumentChunk(Base):
     chunk_index: Mapped[int] = mapped_column(Integer)  # Order of chunk in document
     vector_id: Mapped[str] = mapped_column(String(255))  # ID in vector database
 
+class DocumentVisibility(Base):
+    __tablename__ = "document_visibility"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("knowledge_documents.id", ondelete="CASCADE"), index=True, unique=True)
+    is_public: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
 class FormResponse(Base):
     __tablename__ = "form_responses"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -99,3 +106,13 @@ class WidgetConfig(Base):
     primary_color: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # Bot avatar image URL (served from /static/avatars or external URL)
     avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Bot name displayed in the widget
+    bot_name: Mapped[str | None] = mapped_column(String(100), nullable=True, default="ChatBot")
+    # Appearance settings
+    widget_icon: Mapped[str | None] = mapped_column(String(10), nullable=True, default="💬")
+    widget_position: Mapped[str | None] = mapped_column(String(10), nullable=True, default="right")
+    input_placeholder: Mapped[str | None] = mapped_column(String(100), nullable=True, default="Type your message...")
+    subheading: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    show_branding: Mapped[bool] = mapped_column(Boolean, default=True)
+    open_by_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    starter_questions: Mapped[bool] = mapped_column(Boolean, default=True)

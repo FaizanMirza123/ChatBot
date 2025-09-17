@@ -89,9 +89,31 @@ class WidgetConfigOut(BaseModel):
     fields: List[FormField] = []
     primary_color: Optional[str] = None
     avatar_url: Optional[str] = None
+    bot_name: Optional[str] = None
+    widget_icon: Optional[str] = None
+    widget_position: Optional[str] = None
+    input_placeholder: Optional[str] = None
+    subheading: Optional[str] = None
+    show_branding: Optional[bool] = None
+    open_by_default: Optional[bool] = None
+    starter_questions: Optional[bool] = None
 
 class WidgetConfigIn(BaseModel):
     form_enabled: bool
     fields: List[FormField] = []
     primary_color: Optional[str] = None
     avatar_url: Optional[str] = None
+    bot_name: Optional[str] = None
+    widget_icon: Optional[str] = None
+    widget_position: Optional[str] = None
+    input_placeholder: Optional[str] = None
+    subheading: Optional[str] = None
+    show_branding: Optional[bool] = None
+    open_by_default: Optional[bool] = None
+    starter_questions: Optional[bool] = None
+
+class BotConfigOut(BaseModel):
+    bot_name: str
+
+class BotConfigIn(BaseModel):
+    bot_name: str
