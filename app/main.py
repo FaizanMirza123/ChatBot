@@ -6,10 +6,10 @@ from sqlalchemy.orm import Session
 from openai import OpenAI
 from config import settings
 from db import get_db, Base, engine
-from models import Prompt, KnowledgeDocument, Message, User, Session as ChatSession, Lead, WidgetConfig, FAQ, DocumentVisibility
+from models import Prompt, KnowledgeDocument, Message, User, Session as ChatSession, Lead, WidgetConfig, FAQ, DocumentVisibility, MessagingConfig, StarterQuestions
 from schemas import ChatIn, ChatOut, SystemPromptIn, SystemPromptOut, DocumentUploadOut, DocumentListOut, DocumentDeleteOut
 from schemas import LeadIn, LeadOut, WidgetConfigOut, WidgetConfigIn
-from schemas import FormField, BotConfigOut, BotConfigIn
+from schemas import FormField, BotConfigOut, BotConfigIn, MessagingConfigOut, MessagingConfigIn, StarterQuestionsOut, StarterQuestionsIn
 from services.rag_service import RAGService
 from utils.token_counter import trim_history_to_token_budget
 import os
@@ -253,9 +253,20 @@ async def chat(chat_data: ChatIn, x_client_id: str | None = Header(default=None)
         db.commit()
         db.refresh(user_msg)
 
-        # Generate response with token-budgeted history
+        # Get messaging configuration
+        messaging_cfg = _get_or_create_messaging_config(db)
+        messaging_config = {
+            'ai_model': messaging_cfg.ai_model,
+            'conversational': messaging_cfg.conversational,
+            'strict_faq': messaging_cfg.strict_faq,
+            'response_length': messaging_cfg.response_length,
+            'welcome_message': messaging_cfg.welcome_message,
+            'server_error_message': messaging_cfg.server_error_message
+        }
+
+        # Generate response with token-budgeted history and messaging config
         reply, used_kb = rag_service.generate_rag_response(
-            chat_data.message, system_prompt, history=history
+            chat_data.message, system_prompt, history=history, messaging_config=messaging_config
         )
 
         # Persist assistant reply
@@ -488,6 +499,162 @@ async def update_bot_config(data: BotConfigIn, db: Session = Depends(get_db), _:
     db.commit()
     db.refresh(cfg)
     return BotConfigOut(bot_name=cfg.bot_name)
+
+# Messaging configuration helper
+def _get_or_create_messaging_config(db: Session) -> MessagingConfig:
+    cfg = db.query(MessagingConfig).first()
+    if not cfg:
+        cfg = MessagingConfig(
+            ai_model="gpt-4o",
+            conversational=True,
+            strict_faq=True,
+            response_length="Medium",
+            suggest_followups=False,
+            allow_images=False,
+            show_sources=True,
+            post_feedback=True,
+            multilingual=True,
+            show_welcome=True,
+            welcome_message="Hey there, how can I help you?",
+            no_source_message="The bot is yet to be trained, please add the data and train the bot.",
+            server_error_message="Apologies, there seems to be a server error."
+        )
+        db.add(cfg)
+        db.commit()
+        db.refresh(cfg)
+    return cfg
+
+def _get_or_create_starter_questions(db: Session) -> StarterQuestions:
+    """Get or create starter questions configuration (single row table)"""
+    cfg = db.query(StarterQuestions).first()
+    if not cfg:
+        cfg = StarterQuestions(
+            question_1=None,
+            question_2=None,
+            question_3=None,
+            question_4=None,
+            enabled=True
+        )
+        db.add(cfg)
+        db.commit()
+        db.refresh(cfg)
+    return cfg
+
+# Messaging configuration endpoints
+@app.get("/messaging-config", response_model=MessagingConfigOut)
+async def get_messaging_config(db: Session = Depends(get_db)):
+    """Get messaging configuration"""
+    cfg = _get_or_create_messaging_config(db)
+    return MessagingConfigOut(
+        ai_model=cfg.ai_model,
+        conversational=cfg.conversational,
+        strict_faq=cfg.strict_faq,
+        response_length=cfg.response_length,
+        suggest_followups=cfg.suggest_followups,
+        allow_images=cfg.allow_images,
+        show_sources=cfg.show_sources,
+        post_feedback=cfg.post_feedback,
+        multilingual=cfg.multilingual,
+        show_welcome=cfg.show_welcome,
+        welcome_message=cfg.welcome_message,
+        no_source_message=cfg.no_source_message,
+        server_error_message=cfg.server_error_message
+    )
+
+@app.put("/messaging-config", response_model=MessagingConfigOut)
+async def update_messaging_config(data: MessagingConfigIn, db: Session = Depends(get_db), _: bool = Depends(require_admin)):
+    """Update messaging configuration"""
+    cfg = _get_or_create_messaging_config(db)
+    
+    # Update fields if provided
+    if data.ai_model is not None:
+        cfg.ai_model = data.ai_model.strip() or "gpt-4o"
+    if data.conversational is not None:
+        cfg.conversational = data.conversational
+    if data.strict_faq is not None:
+        cfg.strict_faq = data.strict_faq
+    if data.response_length is not None:
+        cfg.response_length = data.response_length.strip() or "Medium"
+    if data.suggest_followups is not None:
+        cfg.suggest_followups = data.suggest_followups
+    if data.allow_images is not None:
+        cfg.allow_images = data.allow_images
+    if data.show_sources is not None:
+        cfg.show_sources = data.show_sources
+    if data.post_feedback is not None:
+        cfg.post_feedback = data.post_feedback
+    if data.multilingual is not None:
+        cfg.multilingual = data.multilingual
+    if data.show_welcome is not None:
+        cfg.show_welcome = data.show_welcome
+    if data.welcome_message is not None:
+        cfg.welcome_message = data.welcome_message.strip() or "Hey there, how can I help you?"
+    if data.no_source_message is not None:
+        cfg.no_source_message = data.no_source_message.strip() or "The bot is yet to be trained, please add the data and train the bot."
+    if data.server_error_message is not None:
+        cfg.server_error_message = data.server_error_message.strip() or "Apologies, there seems to be a server error."
+    
+    db.add(cfg)
+    db.commit()
+    db.refresh(cfg)
+    
+    return MessagingConfigOut(
+        ai_model=cfg.ai_model,
+        conversational=cfg.conversational,
+        strict_faq=cfg.strict_faq,
+        response_length=cfg.response_length,
+        suggest_followups=cfg.suggest_followups,
+        allow_images=cfg.allow_images,
+        show_sources=cfg.show_sources,
+        post_feedback=cfg.post_feedback,
+        multilingual=cfg.multilingual,
+        show_welcome=cfg.show_welcome,
+        welcome_message=cfg.welcome_message,
+        no_source_message=cfg.no_source_message,
+        server_error_message=cfg.server_error_message
+    )
+
+# Starter questions configuration endpoints
+@app.get("/starter-questions", response_model=StarterQuestionsOut)
+async def get_starter_questions(db: Session = Depends(get_db)):
+    """Get starter questions configuration"""
+    cfg = _get_or_create_starter_questions(db)
+    return StarterQuestionsOut(
+        question_1=cfg.question_1,
+        question_2=cfg.question_2,
+        question_3=cfg.question_3,
+        question_4=cfg.question_4,
+        enabled=cfg.enabled
+    )
+
+@app.put("/starter-questions", response_model=StarterQuestionsOut)
+async def update_starter_questions(data: StarterQuestionsIn, db: Session = Depends(get_db), _: bool = Depends(require_admin)):
+    """Update starter questions configuration"""
+    cfg = _get_or_create_starter_questions(db)
+    
+    # Update fields if provided
+    if data.question_1 is not None:
+        cfg.question_1 = data.question_1.strip() if data.question_1 else None
+    if data.question_2 is not None:
+        cfg.question_2 = data.question_2.strip() if data.question_2 else None
+    if data.question_3 is not None:
+        cfg.question_3 = data.question_3.strip() if data.question_3 else None
+    if data.question_4 is not None:
+        cfg.question_4 = data.question_4.strip() if data.question_4 else None
+    if data.enabled is not None:
+        cfg.enabled = data.enabled
+    
+    db.add(cfg)
+    db.commit()
+    db.refresh(cfg)
+    
+    return StarterQuestionsOut(
+        question_1=cfg.question_1,
+        question_2=cfg.question_2,
+        question_3=cfg.question_3,
+        question_4=cfg.question_4,
+        enabled=cfg.enabled
+    )
 
 # Avatar upload endpoint (stores under /static/avatars and returns the public URL)
 AVATAR_DIR = Path("static/avatars")

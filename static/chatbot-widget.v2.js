@@ -14,6 +14,57 @@
       transition:all 0.3s cubic-bezier(0.4,0,0.2,1);
       transform:scale(1);
     }
+    
+    .cb-welcome-tooltip{
+      position:fixed;bottom:96px;right:24px;z-index:2147483001;
+      background:#fff;color:var(--cb-gray-800);
+      border-radius:12px;box-shadow:var(--cb-shadow-lg);
+      padding:12px 16px;max-width:280px;font-size:14px;
+      border:1px solid var(--cb-gray-200);
+      transform:translateY(20px) scale(0.95);opacity:0;
+      transition:all 0.3s cubic-bezier(0.4,0,0.2,1);
+      pointer-events:none;
+    }
+    .cb-welcome-tooltip.show{
+      transform:translateY(0) scale(1);opacity:1;
+    }
+    .cb-welcome-tooltip.left{
+      right:auto;left:24px;
+    }
+    .cb-welcome-tooltip::after{
+      content:'';position:absolute;bottom:-8px;right:20px;
+      width:0;height:0;border-left:8px solid transparent;
+      border-right:8px solid transparent;border-top:8px solid #fff;
+    }
+    .cb-welcome-tooltip.left::after{
+      right:auto;left:20px;
+    }
+    
+    .cb-starter-questions{
+      padding:16px;border-bottom:1px solid var(--cb-gray-200);
+      background:#f0f9ff !important;
+      border:2px solid #3b82f6 !important;
+      display:block !important;
+    }
+    .cb-starter-title{
+      font-size:14px;font-weight:600;color:var(--cb-gray-700);
+      margin-bottom:12px;
+    }
+    .cb-starter-grid{
+      display:grid;grid-template-columns:1fr 1fr;gap:8px;
+    }
+    .cb-starter-question{
+      background:#fff;border:1px solid var(--cb-gray-300);
+      border-radius:8px;padding:8px 12px;font-size:13px;
+      color:var(--cb-gray-700);cursor:pointer;transition:all 0.2s ease;
+      text-align:left;word-wrap:break-word;
+    }
+    .cb-starter-question:hover{
+      background:var(--cb-primary);color:#fff;border-color:var(--cb-primary);
+    }
+    .cb-starter-question:active{
+      transform:scale(0.98);
+    }
     .cb-floating-button:hover{
       transform:scale(1.1);
       box-shadow:var(--cb-shadow-xl),0 0 0 8px rgba(59,130,246,0.1);
@@ -27,12 +78,9 @@
       border-radius:20px;box-shadow:var(--cb-shadow-xl);
       display:none;flex-direction:column;overflow:hidden;
       border:1px solid var(--cb-gray-200);
-      transform:translateY(20px) scale(0.95);
-      opacity:0;
-      transition:all 0.3s cubic-bezier(0.4,0,0.2,1);
     }
     .cb-panel.open{
-      display:flex;transform:translateY(0) scale(1);opacity:1;
+      display:flex;
     }
     
     .cb-floating-button.left{left:24px;right:auto}
@@ -123,11 +171,6 @@
     }
     .cb-message{
       margin:12px 0;line-height:1.5;font-size:14px;
-      animation:messageSlideIn 0.3s ease-out;
-    }
-    @keyframes messageSlideIn{
-      from{opacity:0;transform:translateY(10px)}
-      to{opacity:1;transform:translateY(0)}
     }
     .cb-message.user{
       background:var(--cb-primary);
@@ -226,7 +269,27 @@
       }
       messages.scrollTop=messages.scrollHeight;
     }
-    async function loadMessages(){ messages.innerHTML=''; try{ const data=await api('messages'); (data&&data.messages||[]).forEach(m=>addMessage(m.role,m.content)); }catch(_){ }}
+    async function loadMessages(){ 
+      console.log('Loading messages...');
+      const clientId = getClientId();
+      console.log('Using client ID:', clientId);
+      messages.innerHTML=''; 
+      try{ 
+        const data=await api('messages'); 
+        console.log('Loaded messages data:', data);
+        if(data && data.messages && Array.isArray(data.messages)) {
+          console.log('Found', data.messages.length, 'messages');
+          data.messages.forEach((m, index) => {
+            console.log(`Message ${index + 1}:`, m.role, m.content);
+            addMessage(m.role, m.content);
+          });
+        } else {
+          console.log('No messages found or invalid data structure');
+        }
+      }catch(e){ 
+        console.error('Failed to load messages:', e);
+      }
+    }
     // Inflight control helpers (declared here for access)
     let inflightCtrl=null; let isSending=false; let typingNode=null; let typingTimer=null;
     function setSendingMode(active){ isSending=!!active; if(typeof input!=='undefined') input.disabled=isSending; if(typeof send!=='undefined'){ send.textContent=isSending?'⏹':'➤'; send.title=isSending?'Stop':'Send'; } }
@@ -243,12 +306,23 @@
   function stopTyping(){ if(typingTimer){ clearInterval(typingTimer); typingTimer=null; } if(typingNode&&typingNode.parentNode){ typingNode.parentNode.removeChild(typingNode);} typingNode=null; }
   function abortRequest(){ if(inflightCtrl){ inflightCtrl.abort(); } }
     async function sendMessage(){
-      if(currentFormEnabled && !leadSaved) return; const text=input.value.trim(); if(!text) return;
+      const text=input.value.trim(); if(!text) return;
       addMessage('user',text); input.value=''; setSendingMode(true); inflightCtrl=new AbortController(); startTyping();
       try{
         const data=await api('chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,client_id:getClientId()}), signal: inflightCtrl.signal});
         stopTyping(); addMessage('assistant',(data.used_faq?'📚 ':'')+data.reply);
-      }catch(e){ stopTyping(); if(e && (e.name==='AbortError' || /aborted/i.test(String(e)))){ addMessage('assistant','(stopped)'); } else { addMessage('assistant','Error: '+(e&&e.message?e.message:'Failed to reach API')); } }
+      }catch(e){ 
+        stopTyping(); 
+        if(e && (e.name==='AbortError' || /aborted/i.test(String(e)))){ 
+          addMessage('assistant','(stopped)'); 
+        } else { 
+          // Use custom server error message if available
+          const errorMsg = (window.messagingConfig && window.messagingConfig.server_error_message) 
+            ? window.messagingConfig.server_error_message 
+            : 'Error: '+(e&&e.message?e.message:'Failed to reach API');
+          addMessage('assistant', errorMsg); 
+        } 
+      }
       finally { setSendingMode(false); inflightCtrl=null; }
     }
     // DOM
@@ -257,64 +331,278 @@
     const panel=el('div','cb-panel');
   const header=el('div','cb-header');
   const brand=el('div','cb-brand'); const avatarImg=document.createElement('img'); avatarImg.className='cb-avatar'; avatarImg.style.display='inline-block'; avatarImg.src=DEFAULT_AVATAR; avatarImg.onerror=()=>{avatarImg.src=DEFAULT_AVATAR;}; const brandInfo=el('div','cb-brand-info'); const title=el('div','cb-title',cfg.title); brandInfo.appendChild(title); brand.appendChild(avatarImg); brand.appendChild(brandInfo); const close=el('button','cb-close','×'); header.appendChild(brand); header.appendChild(close); panel.appendChild(header);
-    // Form (gated + dynamic)
-    const formSection=el('div','cb-section'); formSection.style.display='none';
-  const formTitle=el('h2',null,'Visitor Info');
-  const formNote=el('div','cb-note','Kindly Provide you Creds incase we break off in between the chat');
-    const formRow=el('div','cb-form');
-    const saveBtn=el('button','cb-btn','Save');
-    const formStatus=el('div','cb-status');
-  formSection.appendChild(formTitle); formSection.appendChild(formNote); formSection.appendChild(formRow); formRow.appendChild(saveBtn); formSection.appendChild(formStatus); panel.appendChild(formSection);
-  let dynamicFields=[]; // fetched config fields
-  let botAvatarUrl='';
-    function rebuildFormFields(){
-      // keep save button and status at end
-      while(formRow.firstChild && formRow.firstChild!==saveBtn){ formRow.removeChild(formRow.firstChild); }
-      const sorted=[...dynamicFields].sort((a,b)=> (a.order||0)-(b.order||0));
-      sorted.forEach(f=>{
-        const inputEl = (f.type==='textarea')? document.createElement('textarea'): document.createElement('input');
-        if(f.type!=='textarea') inputEl.type = (f.type==='email'||f.type==='number')?f.type:'text';
-        inputEl.placeholder = f.placeholder || f.label || f.name;
-        inputEl.dataset.fieldName = f.name;
-        // full-width handled by CSS
-        formRow.insertBefore(inputEl, saveBtn);
-      });
-    }
-  // Chat wrapper
-  const chatWrapper=el('div','cb-chat'); const messages=el('div','cb-messages'); const inputBar=el('div','cb-input'); const input=document.createElement('input'); input.placeholder='Type your message...'; const send=el('button',null,''); const sendIcon=document.createElementNS('http://www.w3.org/2000/svg','svg'); sendIcon.setAttribute('viewBox','0 0 24 24'); sendIcon.innerHTML='<path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>'; send.appendChild(sendIcon); inputBar.appendChild(input); inputBar.appendChild(send); chatWrapper.appendChild(messages); chatWrapper.appendChild(inputBar); panel.appendChild(chatWrapper);
+    // Form removed - always show chat with starter questions
+  // Starter questions screen (shown first)
+  const starterScreen=el('div','cb-starter-screen');
+  starterScreen.style.cssText=`
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:40px 20px;text-align:center;min-height:400px;
+  `;
+  
+  // Chat wrapper (shown after question selection)
+  const chatWrapper=el('div','cb-chat'); 
+  chatWrapper.style.display='none'; // Hidden initially
+  const messages=el('div','cb-messages'); 
+  const inputBar=el('div','cb-input'); 
+  const input=document.createElement('input'); 
+  input.placeholder='Type your message...'; 
+  const send=el('button',null,''); 
+  const sendIcon=document.createElementNS('http://www.w3.org/2000/svg','svg'); 
+  sendIcon.setAttribute('viewBox','0 0 24 24'); 
+  sendIcon.innerHTML='<path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>'; 
+  send.appendChild(sendIcon); 
+  inputBar.appendChild(input); 
+  inputBar.appendChild(send); 
+  chatWrapper.appendChild(messages); 
+  chatWrapper.appendChild(inputBar); 
+  
+  panel.appendChild(starterScreen);
+  panel.appendChild(chatWrapper);
     root.appendChild(btn); root.appendChild(panel);
-  let currentFormEnabled=null; let leadSaved=false;
-    // Visibility logic:
-    // 1. Form feature disabled => show chat only.
-    // 2. Enabled & not saved => show form only (gate chat).
-    // 3. Enabled & saved => hide form (no re-submit) show chat.
-    function updateVisibility(){
-      if(currentFormEnabled){
-        if(leadSaved){
-          formSection.style.display='none';
-          chatWrapper.style.display='flex';
-          saveBtn.disabled=true;
-        } else {
-          formSection.style.display='block';
-          chatWrapper.style.display='none';
-          saveBtn.disabled=false;
-        }
-      } else {
-        formSection.style.display='none';
-        chatWrapper.style.display='flex';
-      }
+  // Form removed - always show chat
+  
+  function showWelcomeMessage() {
+    console.log('showWelcomeMessage called', window.messagingConfig);
+    if(!window.messagingConfig || !window.messagingConfig.show_welcome) {
+      console.log('Welcome message disabled or no config');
+      return;
     }
-  function getFieldEl(name){ return Array.from(formRow.querySelectorAll('[data-field-name]')).find(i=>i.dataset.fieldName===name); }
-  async function loadLead(){ try{ const lead=await api('lead'); if(lead && lead.email){ const nameEl=getFieldEl('name'); const emailEl=getFieldEl('email'); if(nameEl) nameEl.value=lead.name||''; if(emailEl) emailEl.value=lead.email||''; leadSaved=true; updateVisibility(); } }catch(_){ } }
-  async function applyFormEnabled(flag){ if(flag){ if(currentFormEnabled===null){ await loadLead(); } } else { leadSaved=true; } currentFormEnabled=flag; updateVisibility(); }
+    
+    // Remove existing tooltip if any
+    const existingTooltip = document.querySelector('.cb-welcome-tooltip');
+    if(existingTooltip) {
+      existingTooltip.remove();
+    }
+    
+    const welcomeMsg = window.messagingConfig.welcome_message || "Hey there, how can I help you?";
+    const tooltip = el('div', 'cb-welcome-tooltip');
+    tooltip.textContent = welcomeMsg;
+    
+    // Position tooltip based on widget position
+    const isLeft = btn.classList.contains('left');
+    if(isLeft) {
+      tooltip.classList.add('left');
+    }
+    
+    document.body.appendChild(tooltip);
+    
+    // Show tooltip with animation
+    setTimeout(() => {
+      tooltip.classList.add('show');
+    }, 100);
+    
+    // Auto-hide after 5 seconds
+    setTimeout(() => {
+      if(tooltip && tooltip.parentNode) {
+        tooltip.classList.remove('show');
+        setTimeout(() => {
+          if(tooltip && tooltip.parentNode) {
+            tooltip.remove();
+          }
+        }, 300);
+      }
+    }, 5000);
+  }
+  
+  function showStarterQuestionsScreen() {
+    console.log('=== SHOWING STARTER QUESTIONS SCREEN ===');
+    console.log('Starter questions data:', window.starterQuestions);
+    
+    // Check if user has already seen starter questions
+    const hasSeenStarterQuestions = localStorage.getItem('chatbot_starter_seen');
+    if(hasSeenStarterQuestions === 'true') {
+      console.log('User has already seen starter questions, showing chat directly');
+      showChatScreen();
+      return;
+    }
+    
+    // Clear starter screen
+    starterScreen.innerHTML = '';
+    
+    // Check if we have starter questions
+    if(!window.starterQuestions || !window.starterQuestions.enabled) {
+      console.log('No starter questions, showing chat directly');
+      showChatScreen();
+      return;
+    }
+    
+    // Get non-empty questions
+    const questions = [
+      window.starterQuestions.question_1,
+      window.starterQuestions.question_2,
+      window.starterQuestions.question_3,
+      window.starterQuestions.question_4
+    ].filter(q => q && q.trim());
+    
+    console.log('Questions to show:', questions);
+    
+    if(questions.length === 0) {
+      console.log('No questions, showing chat directly');
+      showChatScreen();
+      return;
+    }
+    
+    // Create title
+    const title = el('div', 'cb-starter-title');
+    title.textContent = 'How can I help you today?';
+    title.style.cssText = `
+      font-size: 24px; font-weight: 700; color: var(--cb-gray-800);
+      margin-bottom: 8px;
+    `;
+    
+    // Create subtitle
+    const subtitle = el('div', 'cb-starter-subtitle');
+    subtitle.textContent = 'Choose a question to get started:';
+    subtitle.style.cssText = `
+      font-size: 16px; color: var(--cb-gray-600);
+      margin-bottom: 32px;
+    `;
+    
+    // Create questions container
+    const questionsContainer = el('div', 'cb-questions-container');
+    questionsContainer.style.cssText = `
+      display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+      width: 100%; max-width: 500px;
+    `;
+    
+    // Create question buttons
+    questions.forEach((question, index) => {
+      const btn = el('button', 'cb-question-btn');
+      btn.textContent = question;
+      btn.style.cssText = `
+        padding: 16px 20px; background: #fff; border: 2px solid var(--cb-primary);
+        border-radius: 12px; cursor: pointer; text-align: left;
+        font-size: 14px; color: var(--cb-gray-700); transition: all 0.2s ease;
+        box-shadow: var(--cb-shadow-sm); min-height: 60px;
+        display: flex; align-items: center; justify-content: center;
+      `;
+      
+      // Simple hover effects (no transform)
+      btn.addEventListener('mouseenter', () => {
+        btn.style.background = 'var(--cb-primary)';
+        btn.style.color = '#fff';
+        btn.style.boxShadow = 'var(--cb-shadow-md)';
+      });
+      
+      btn.addEventListener('mouseleave', () => {
+        btn.style.background = '#fff';
+        btn.style.color = 'var(--cb-gray-700)';
+        btn.style.boxShadow = 'var(--cb-shadow-sm)';
+      });
+      
+      // Click handler
+      btn.addEventListener('click', () => {
+        console.log('Question clicked:', question);
+        // Mark that user has seen starter questions
+        localStorage.setItem('chatbot_starter_seen', 'true');
+        // Send question and show chat
+        sendQuestionAndShowChat(question);
+      });
+      
+      questionsContainer.appendChild(btn);
+    });
+    
+    // Add skip button
+    const skipBtn = el('button', 'cb-skip-btn');
+    skipBtn.textContent = 'Skip and start chatting';
+    skipBtn.style.cssText = `
+      margin-top: 24px; padding: 12px 24px; background: transparent;
+      border: 1px solid var(--cb-gray-300); border-radius: 8px;
+      cursor: pointer; font-size: 14px; color: var(--cb-gray-600);
+      transition: all 0.2s ease;
+    `;
+    
+    skipBtn.addEventListener('click', () => {
+      console.log('Skip clicked, showing chat');
+      // Mark that user has seen starter questions
+      localStorage.setItem('chatbot_starter_seen', 'true');
+      showChatScreen();
+    });
+    
+    // Assemble the screen
+    starterScreen.appendChild(title);
+    starterScreen.appendChild(subtitle);
+    starterScreen.appendChild(questionsContainer);
+    starterScreen.appendChild(skipBtn);
+    
+    // Show starter screen, hide chat (no animation)
+    starterScreen.style.display = 'flex';
+    starterScreen.style.opacity = '1';
+    starterScreen.style.transform = 'none';
+    chatWrapper.style.display = 'none';
+    
+    console.log('Starter questions screen created and shown');
+  }
+  
+  function showChatScreen() {
+    console.log('=== SHOWING CHAT SCREEN ===');
+    
+    // Load messages first
+    loadMessages().catch(e => console.error('Failed to load messages:', e));
+    
+    // Instant transition (no animation)
+    starterScreen.style.display = 'none';
+    chatWrapper.style.display = 'flex';
+    chatWrapper.style.opacity = '1';
+    chatWrapper.style.transform = 'none';
+  }
+  
+  function sendQuestionAndShowChat(question) {
+    console.log('Sending question and showing chat:', question);
+    
+    // Show chat screen first
+    showChatScreen();
+    
+    // Add user message
+    addMessage('user', question);
+    
+    // Send to bot
+    setSendingMode(true);
+    inflightCtrl = new AbortController();
+    startTyping();
+    
+    api('chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: question, client_id: getClientId() }),
+      signal: inflightCtrl.signal
+    }).then(data => {
+      stopTyping();
+      addMessage('assistant', (data.used_faq ? '📚 ' : '') + data.reply);
+    }).catch(e => {
+      stopTyping();
+      const errorMsg = (window.messagingConfig && window.messagingConfig.server_error_message)
+        ? window.messagingConfig.server_error_message
+        : 'Error: ' + (e && e.message ? e.message : 'Failed to reach API');
+      addMessage('assistant', errorMsg);
+    }).finally(() => {
+      setSendingMode(false);
+    });
+  }
+  // Form functions removed
   async function refreshConfig(){ 
     try{ 
       const wc=await api('widget-config'); 
-      if(!wc) return; 
+      if(!wc) return;
       
-      // Update form fields
-      dynamicFields=Array.isArray(wc.fields)?wc.fields:[]; 
-      rebuildFormFields(); 
+      // Load messaging configuration
+      let messagingConfig = null;
+      try {
+        messagingConfig = await api('messaging-config');
+      } catch (e) {
+        console.warn('Failed to load messaging config:', e);
+      }
+      
+      // Load starter questions configuration
+      let starterQuestions = null;
+      try {
+        starterQuestions = await api('starter-questions');
+        console.log('Loaded starter questions:', starterQuestions);
+      } catch (e) {
+        console.warn('Failed to load starter questions:', e);
+      } 
+      
+      // Form fields removed 
       
       // Update primary color
       if(wc.primary_color){ 
@@ -409,6 +697,30 @@
         startPoll(); 
       }
       
+      // Store messaging config for later use
+      if(messagingConfig) {
+        console.log('Storing messaging config:', messagingConfig);
+        window.messagingConfig = messagingConfig;
+        
+        // Show welcome tooltip on initial load if enabled
+        if(messagingConfig.show_welcome && !panel.classList.contains('open')) {
+          console.log('Scheduling welcome message display');
+          setTimeout(() => {
+            showWelcomeMessage();
+          }, 1000); // Show after 1 second delay
+        }
+      } else {
+        console.log('No messaging config loaded');
+      }
+      
+      // Store starter questions for later use
+      if(starterQuestions) {
+        console.log('Storing starter questions:', starterQuestions);
+        window.starterQuestions = starterQuestions;
+      } else {
+        console.log('No starter questions loaded');
+      }
+      
       // Update starter questions (if implemented)
       if(wc.starter_questions !== undefined){ 
         // This would need additional implementation for starter questions
@@ -416,58 +728,71 @@
         console.log('Starter questions enabled:', wc.starter_questions);
       }
       
-      // Update form enabled state
-      const desired=!!wc.form_enabled; 
-      if(desired!==currentFormEnabled){ 
-        await applyFormEnabled(desired);
-      } else { 
-        updateVisibility(); 
-      } 
+      // Form removed - always show chat 
     }catch(e){ 
       console.warn('[ChatbotWidget] Failed to refresh config:', e);
     } 
   }
   (async()=>{ await refreshConfig(); })();
     let poll=null; function startPoll(){ if(poll) return; poll=setInterval(refreshConfig,20000);} function stopPoll(){ if(poll){ clearInterval(poll); poll=null; }}
-    btn.onclick=async()=>{ const was=panel.classList.contains('open'); if(!was){ await refreshConfig().catch(()=>{});} panel.classList.toggle('open'); if(!was) startPoll(); else stopPoll(); };
+    btn.onclick=async()=>{ 
+      const was=panel.classList.contains('open'); 
+      if(!was){ 
+        await refreshConfig().catch(()=>{}); 
+        // Hide welcome tooltip when chat opens
+        const existingTooltip = document.querySelector('.cb-welcome-tooltip');
+        if(existingTooltip) {
+          existingTooltip.classList.remove('show');
+          setTimeout(() => {
+            if(existingTooltip && existingTooltip.parentNode) {
+              existingTooltip.remove();
+            }
+          }, 300);
+        }
+      } 
+      panel.classList.toggle('open'); 
+      if(!was) {
+        startPoll();
+        // Show starter questions screen after panel opens
+        setTimeout(() => {
+          console.log('Panel opened, showing starter questions screen');
+          showStarterQuestionsScreen();
+        }, 100);
+      } else {
+        stopPoll(); 
+      }
+    };
+    
+    // Show welcome tooltip on hover
+    btn.addEventListener('mouseenter', () => {
+      if(!panel.classList.contains('open') && window.messagingConfig && window.messagingConfig.show_welcome) {
+        showWelcomeMessage();
+      }
+    });
+    
+    // Hide welcome tooltip when mouse leaves
+    btn.addEventListener('mouseleave', () => {
+      const existingTooltip = document.querySelector('.cb-welcome-tooltip');
+      if(existingTooltip) {
+        existingTooltip.classList.remove('show');
+        setTimeout(() => {
+          if(existingTooltip && existingTooltip.parentNode) {
+            existingTooltip.remove();
+          }
+        }, 300);
+      }
+    });
     close.onclick=()=>{ panel.classList.remove('open'); stopPoll(); };
   try{ window.addEventListener('storage', e=>{ if(e && e.key==='widget_config_version'){ refreshConfig(); }}); }catch(_){ }
   send.onclick=()=>{ if(isSending){ abortRequest(); } else { sendMessage(); } };
   input.addEventListener('keydown',e=>{ if(e.key==='Enter' && !isSending) sendMessage(); if(e.key==='Escape' && isSending) abortRequest(); });
-    async function saveLead(){
-      if(leadSaved) return;
-      const data={};
-      let emailValid=true;
-      dynamicFields.forEach(f=>{
-        const el=getFieldEl(f.name);
-        if(!el) return;
-        const val=(el.value||'').trim();
-        if(f.required && !val){ emailValid=false; }
-        data[f.name]=val;
-      });
-      const emailVal=data.email;
-      // Basic required + email validation if email field present
-      if(dynamicFields.some(f=>f.name==='email' && f.required)){
-        if(!emailVal || !/\S+@\S+\.\S+/.test(emailVal)) emailValid=false;
-      }
-      if(!emailValid){ formStatus.textContent='Please fill required fields correctly.'; formStatus.className='cb-status error'; return; }
-      try{
-        saveBtn.disabled=true;
-        if(emailVal){
-          await api('lead',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:data.name||'',email:emailVal,client_id:getClientId()})});
-        } else {
-          // fallback generic submission
-          await api('form/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
-        }
-        leadSaved=true;
-        formStatus.textContent='Saved';
-        formStatus.className='cb-status ok';
-        updateVisibility();
-      }catch(e){ saveBtn.disabled=false; formStatus.textContent='Error: '+(e&&e.message?e.message:'Could not save info'); formStatus.className='cb-status error'; }
-    }
-    saveBtn.onclick=saveLead;
+    // Form functions removed
     injectStyles(); loadMessages().catch(()=>{});
-    return { open:()=>{ panel.classList.add('open'); startPoll(); }, close:()=>{ panel.classList.remove('open'); stopPoll(); } };
+    return { 
+      open:()=>{ panel.classList.add('open'); startPoll(); }, 
+      close:()=>{ panel.classList.remove('open'); stopPoll(); },
+      resetStarterQuestions:()=>{ localStorage.removeItem('chatbot_starter_seen'); console.log('Starter questions flag reset'); }
+    };
   }
   window.createChatbotWidget=function(options){ injectStyles(); return new ChatbotWidget(options); };
 })();

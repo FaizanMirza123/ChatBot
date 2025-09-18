@@ -116,3 +116,33 @@ class WidgetConfig(Base):
     show_branding: Mapped[bool] = mapped_column(Boolean, default=True)
     open_by_default: Mapped[bool] = mapped_column(Boolean, default=False)
     starter_questions: Mapped[bool] = mapped_column(Boolean, default=True)
+
+class MessagingConfig(Base):
+    __tablename__ = "messaging_config"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # AI Model settings
+    ai_model: Mapped[str | None] = mapped_column(String(50), nullable=True, default="gpt-4o")
+    # Response behavior settings
+    conversational: Mapped[bool] = mapped_column(Boolean, default=True)
+    strict_faq: Mapped[bool] = mapped_column(Boolean, default=True)
+    response_length: Mapped[str | None] = mapped_column(String(20), nullable=True, default="Medium")
+    suggest_followups: Mapped[bool] = mapped_column(Boolean, default=False)
+    allow_images: Mapped[bool] = mapped_column(Boolean, default=False)
+    show_sources: Mapped[bool] = mapped_column(Boolean, default=True)
+    post_feedback: Mapped[bool] = mapped_column(Boolean, default=True)
+    multilingual: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Message settings
+    show_welcome: Mapped[bool] = mapped_column(Boolean, default=True)
+    welcome_message: Mapped[str | None] = mapped_column(String(500), nullable=True, default="Hey there, how can I help you?")
+    no_source_message: Mapped[str | None] = mapped_column(String(500), nullable=True, default="The bot is yet to be trained, please add the data and train the bot.")
+    server_error_message: Mapped[str | None] = mapped_column(String(500), nullable=True, default="Apologies, there seems to be a server error.")
+
+class StarterQuestions(Base):
+    __tablename__ = "starter_questions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Single row table (id=1) for global starter questions
+    question_1: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    question_2: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    question_3: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    question_4: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=True)

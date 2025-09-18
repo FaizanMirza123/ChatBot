@@ -117,3 +117,47 @@ class BotConfigOut(BaseModel):
 
 class BotConfigIn(BaseModel):
     bot_name: str
+
+class MessagingConfigOut(BaseModel):
+    ai_model: Optional[str] = None
+    conversational: Optional[bool] = None
+    strict_faq: Optional[bool] = None
+    response_length: Optional[str] = None
+    suggest_followups: Optional[bool] = None
+    allow_images: Optional[bool] = None
+    show_sources: Optional[bool] = None
+    post_feedback: Optional[bool] = None
+    multilingual: Optional[bool] = None
+    show_welcome: Optional[bool] = None
+    welcome_message: Optional[str] = None
+    no_source_message: Optional[str] = None
+    server_error_message: Optional[str] = None
+
+class MessagingConfigIn(BaseModel):
+    ai_model: Optional[str] = None
+    conversational: Optional[bool] = None
+    strict_faq: Optional[bool] = None
+    response_length: Optional[str] = None
+    suggest_followups: Optional[bool] = None
+    allow_images: Optional[bool] = None
+    show_sources: Optional[bool] = None
+    post_feedback: Optional[bool] = None
+    multilingual: Optional[bool] = None
+    show_welcome: Optional[bool] = None
+    welcome_message: Optional[str] = None
+    no_source_message: Optional[str] = None
+    server_error_message: Optional[str] = None
+
+class StarterQuestionsOut(BaseModel):
+    question_1: Optional[str] = None
+    question_2: Optional[str] = None
+    question_3: Optional[str] = None
+    question_4: Optional[str] = None
+    enabled: Optional[bool] = None
+
+class StarterQuestionsIn(BaseModel):
+    question_1: Optional[str] = None
+    question_2: Optional[str] = None
+    question_3: Optional[str] = None
+    question_4: Optional[str] = None
+    enabled: Optional[bool] = None

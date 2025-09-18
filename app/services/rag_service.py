@@ -251,11 +251,21 @@ class RAGService:
         
         return search_results
     
-    def generate_rag_response(self, query: str, system_prompt: str, history: list[dict] | None = None) -> Tuple[str, bool]:
+    def generate_rag_response(self, query: str, system_prompt: str, history: list[dict] | None = None, messaging_config: dict | None = None) -> Tuple[str, bool]:
         """
-        Generate a concise response. Use KB when relevant; otherwise regular chat.
+        Generate a response based on messaging configuration. Use KB when relevant; otherwise regular chat.
         Returns (response, used_kb)
         """
+        # Default messaging config if not provided
+        if messaging_config is None:
+            messaging_config = {
+                'ai_model': 'gpt-4o',
+                'conversational': True,
+                'strict_faq': True,
+                'response_length': 'Medium',
+                'welcome_message': 'Hey there, how can I help you?',
+                'server_error_message': 'Apologies, there seems to be a server error.'
+            }
         def contextualize_query(q: str, hist: list[dict] | None) -> str:
             q_stripped = (q or "").strip().lower()
             short_ack = {"yes", "yeah", "yup", "y", "no", "nope", "n", "ok", "okay", "sure", "fine", "thanks", "thank you"}
@@ -273,9 +283,13 @@ class RAGService:
 
         q = contextualize_query(query, history)
 
-        # If KB not needed, answer concisely without KB
+        # If KB not needed, answer based on messaging config
         if not self.should_use_knowledge_base(q):
-            concise_prompt = system_prompt + "\n\nWrite a concise answer. Maximum 2–3 short sentences or up to 3 bullets. No intros."
+            # Apply response length settings
+            length_instruction = self._get_length_instruction(messaging_config.get('response_length', 'Medium'))
+            conversational_instruction = self._get_conversational_instruction(messaging_config.get('conversational', True))
+            
+            concise_prompt = system_prompt + f"\n\n{conversational_instruction} {length_instruction} No intros."
             messages: list[dict] = [{"role": "system", "content": concise_prompt}]
             if history:
                 messages.extend(history)
@@ -283,9 +297,9 @@ class RAGService:
 
             client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
             response = client.chat.completions.create(
-                model=settings.OPENAI_MODEL,
+                model=messaging_config.get('ai_model', settings.OPENAI_MODEL),
                 temperature=settings.OPENAI_TEMPERATURE,
-                max_tokens=settings.OPENAI_MAX_TOKENS,
+                max_tokens=self._get_max_tokens(messaging_config.get('response_length', 'Medium')),
                 messages=messages,
             )
             return response.choices[0].message.content, False
@@ -293,7 +307,11 @@ class RAGService:
         # KB search
         kb_results = self.search_knowledge_base(q)
         if not kb_results:
-            concise_prompt = system_prompt + "\n\nWrite a concise answer. Maximum 2–3 short sentences or up to 3 bullets. No intros."
+            # Apply response length settings
+            length_instruction = self._get_length_instruction(messaging_config.get('response_length', 'Medium'))
+            conversational_instruction = self._get_conversational_instruction(messaging_config.get('conversational', True))
+            
+            concise_prompt = system_prompt + f"\n\n{conversational_instruction} {length_instruction} No intros."
             messages: list[dict] = [{"role": "system", "content": concise_prompt}]
             if history:
                 messages.extend(history)
@@ -301,9 +319,9 @@ class RAGService:
 
             client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
             response = client.chat.completions.create(
-                model=settings.OPENAI_MODEL,
+                model=messaging_config.get('ai_model', settings.OPENAI_MODEL),
                 temperature=settings.OPENAI_TEMPERATURE,
-                max_tokens=settings.OPENAI_MAX_TOKENS,
+                max_tokens=self._get_max_tokens(messaging_config.get('response_length', 'Medium')),
                 messages=messages,
             )
             return response.choices[0].message.content, False
@@ -315,7 +333,11 @@ class RAGService:
                 context_parts.append(f"From {metadata['filename']}: {doc_text}")
 
         if not context_parts:
-            concise_prompt = system_prompt + "\n\nWrite a concise answer. Maximum 2–3 short sentences or up to 3 bullets. No intros."
+            # Apply response length settings
+            length_instruction = self._get_length_instruction(messaging_config.get('response_length', 'Medium'))
+            conversational_instruction = self._get_conversational_instruction(messaging_config.get('conversational', True))
+            
+            concise_prompt = system_prompt + f"\n\n{conversational_instruction} {length_instruction} No intros."
             messages: list[dict] = [{"role": "system", "content": concise_prompt}]
             if history:
                 messages.extend(history)
@@ -323,38 +345,53 @@ class RAGService:
 
             client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
             response = client.chat.completions.create(
-                model=settings.OPENAI_MODEL,
+                model=messaging_config.get('ai_model', settings.OPENAI_MODEL),
                 temperature=settings.OPENAI_TEMPERATURE,
-                max_tokens=settings.OPENAI_MAX_TOKENS,
+                max_tokens=self._get_max_tokens(messaging_config.get('response_length', 'Medium')),
                 messages=messages,
             )
             return response.choices[0].message.content, False
 
         context = "\n\n".join(context_parts)
+        
+        # Apply strict FAQ mode if enabled
+        strict_faq_instruction = ""
+        if messaging_config.get('strict_faq', True):
+            strict_faq_instruction = (
+                "\n\nSTRICT FAQ MODE: You MUST only answer questions that are directly related to the provided knowledge base content. "
+                "If the user asks about something not covered in the knowledge base, politely say 'I can't help you with that as it's not covered in our knowledge base. "
+                "Please contact our staff for assistance with that question.'"
+            )
+        
+        # Apply response length and conversational settings
+        length_instruction = self._get_length_instruction(messaging_config.get('response_length', 'Medium'))
+        conversational_instruction = self._get_conversational_instruction(messaging_config.get('conversational', True))
+        
         rag_system_prompt = (
             f"{system_prompt}\n\n"
             f"You have access to the following relevant information from the knowledge base:\n\n"
             f"{context}\n\n"
             "Instructions:\n"
             "- Start with the direct answer in one sentence when possible.\n"
-            "- Keep it concise: 2–3 short sentences, or up to 3 bullets if listing.\n"
+            f"- {conversational_instruction}\n"
+            f"- {length_instruction}\n"
             "- Avoid generic boilerplate or persona language.\n"
             "- Use KB info when relevant and mention it's from the KB if helpful.\n"
-            "- If the KB is incomplete, say what’s known and what needs staff confirmation.\n"
+            "- If the KB is incomplete, say what's known and what needs staff confirmation.\n"
             "- Do not fabricate specific company details (pricing, appointments, policies)."
+            f"{strict_faq_instruction}"
         )
 
-        concise_rag_prompt = rag_system_prompt + "\n\nAnswer concisely. Max 2–3 short sentences or 3 bullets."
-        messages = [{"role": "system", "content": concise_rag_prompt}]
+        messages = [{"role": "system", "content": rag_system_prompt}]
         if history:
             messages.extend(history)
         messages.append({"role": "user", "content": q})
 
         client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
         response = client.chat.completions.create(
-            model=settings.OPENAI_MODEL,
+            model=messaging_config.get('ai_model', settings.OPENAI_MODEL),
             temperature=settings.OPENAI_TEMPERATURE,
-            max_tokens=settings.OPENAI_MAX_TOKENS,
+            max_tokens=self._get_max_tokens(messaging_config.get('response_length', 'Medium')),
             messages=messages,
         )
         return response.choices[0].message.content, True
@@ -385,3 +422,28 @@ class RAGService:
     def list_documents(self, db: Session) -> List[KnowledgeDocument]:
         """List all documents in the knowledge base."""
         return db.query(KnowledgeDocument).order_by(KnowledgeDocument.upload_date.desc()).all()
+    
+    def _get_length_instruction(self, response_length: str) -> str:
+        """Get response length instruction based on setting."""
+        if response_length == 'Short':
+            return "Write a very brief answer. Maximum 1-2 short sentences."
+        elif response_length == 'Long':
+            return "Write a detailed answer. Provide comprehensive information with 4-6 sentences or more."
+        else:  # Medium
+            return "Write a concise answer. Maximum 2–3 short sentences, or up to 3 bullets if listing."
+    
+    def _get_conversational_instruction(self, conversational: bool) -> str:
+        """Get conversational mode instruction."""
+        if conversational:
+            return "Segment your response into shorter, more readable messages. Break down complex information into digestible parts."
+        else:
+            return "Write a single, comprehensive response without breaking it into segments."
+    
+    def _get_max_tokens(self, response_length: str) -> int:
+        """Get max tokens based on response length setting."""
+        if response_length == 'Short':
+            return 150
+        elif response_length == 'Long':
+            return 800
+        else:  # Medium
+            return 300
