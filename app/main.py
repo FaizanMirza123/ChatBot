@@ -529,10 +529,7 @@ def _get_or_create_starter_questions(db: Session) -> StarterQuestions:
     cfg = db.query(StarterQuestions).first()
     if not cfg:
         cfg = StarterQuestions(
-            question_1=None,
-            question_2=None,
-            question_3=None,
-            question_4=None,
+            questions=[],
             enabled=True
         )
         db.add(cfg)
@@ -620,10 +617,7 @@ async def get_starter_questions(db: Session = Depends(get_db)):
     """Get starter questions configuration"""
     cfg = _get_or_create_starter_questions(db)
     return StarterQuestionsOut(
-        question_1=cfg.question_1,
-        question_2=cfg.question_2,
-        question_3=cfg.question_3,
-        question_4=cfg.question_4,
+        questions=cfg.questions or [],
         enabled=cfg.enabled
     )
 
@@ -633,14 +627,9 @@ async def update_starter_questions(data: StarterQuestionsIn, db: Session = Depen
     cfg = _get_or_create_starter_questions(db)
     
     # Update fields if provided
-    if data.question_1 is not None:
-        cfg.question_1 = data.question_1.strip() if data.question_1 else None
-    if data.question_2 is not None:
-        cfg.question_2 = data.question_2.strip() if data.question_2 else None
-    if data.question_3 is not None:
-        cfg.question_3 = data.question_3.strip() if data.question_3 else None
-    if data.question_4 is not None:
-        cfg.question_4 = data.question_4.strip() if data.question_4 else None
+    if data.questions is not None:
+        # Filter out empty questions and trim whitespace
+        cfg.questions = [q.strip() for q in data.questions if q and q.strip()]
     if data.enabled is not None:
         cfg.enabled = data.enabled
     
@@ -649,10 +638,7 @@ async def update_starter_questions(data: StarterQuestionsIn, db: Session = Depen
     db.refresh(cfg)
     
     return StarterQuestionsOut(
-        question_1=cfg.question_1,
-        question_2=cfg.question_2,
-        question_3=cfg.question_3,
-        question_4=cfg.question_4,
+        questions=cfg.questions or [],
         enabled=cfg.enabled
     )
 

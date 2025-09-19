@@ -140,9 +140,6 @@ class MessagingConfig(Base):
 class StarterQuestions(Base):
     __tablename__ = "starter_questions"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    # Single row table (id=1) for global starter questions
-    question_1: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    question_2: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    question_3: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    question_4: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Dynamic questions stored as JSON array
+    questions: Mapped[list] = mapped_column(JSON, default=list)
     enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True, default=True)

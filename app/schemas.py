@@ -149,15 +149,9 @@ class MessagingConfigIn(BaseModel):
     server_error_message: Optional[str] = None
 
 class StarterQuestionsOut(BaseModel):
-    question_1: Optional[str] = None
-    question_2: Optional[str] = None
-    question_3: Optional[str] = None
-    question_4: Optional[str] = None
+    questions: List[str] = []
     enabled: Optional[bool] = None
 
 class StarterQuestionsIn(BaseModel):
-    question_1: Optional[str] = None
-    question_2: Optional[str] = None
-    question_3: Optional[str] = None
-    question_4: Optional[str] = None
+    questions: List[str] = []
     enabled: Optional[bool] = None

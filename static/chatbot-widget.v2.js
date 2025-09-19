@@ -331,13 +331,19 @@
     const panel=el('div','cb-panel');
   const header=el('div','cb-header');
   const brand=el('div','cb-brand'); const avatarImg=document.createElement('img'); avatarImg.className='cb-avatar'; avatarImg.style.display='inline-block'; avatarImg.src=DEFAULT_AVATAR; avatarImg.onerror=()=>{avatarImg.src=DEFAULT_AVATAR;}; const brandInfo=el('div','cb-brand-info'); const title=el('div','cb-title',cfg.title); brandInfo.appendChild(title); brand.appendChild(avatarImg); brand.appendChild(brandInfo); const close=el('button','cb-close','×'); header.appendChild(brand); header.appendChild(close); panel.appendChild(header);
-    // Form removed - always show chat with starter questions
-  // Starter questions screen (shown first)
-  const starterScreen=el('div','cb-starter-screen');
-  starterScreen.style.cssText=`
-    display:flex;flex-direction:column;align-items:center;justify-content:center;
-    padding:40px 20px;text-align:center;min-height:400px;
-  `;
+    // User form screen (shown first)
+    const formScreen=el('div','cb-form-screen');
+    formScreen.style.cssText=`
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      padding:40px 20px;text-align:center;min-height:400px;
+    `;
+    
+    // Starter questions screen (shown after form)
+    const starterScreen=el('div','cb-starter-screen');
+    starterScreen.style.cssText=`
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      padding:40px 20px;text-align:center;min-height:400px;
+    `;
   
   // Chat wrapper (shown after question selection)
   const chatWrapper=el('div','cb-chat'); 
@@ -356,8 +362,9 @@
   chatWrapper.appendChild(messages); 
   chatWrapper.appendChild(inputBar); 
   
-  panel.appendChild(starterScreen);
-  panel.appendChild(chatWrapper);
+    panel.appendChild(formScreen);
+    panel.appendChild(starterScreen);
+    panel.appendChild(chatWrapper);
     root.appendChild(btn); root.appendChild(panel);
   // Form removed - always show chat
   
@@ -404,12 +411,236 @@
     }, 5000);
   }
   
+  function showUserFormScreen() {
+    console.log('=== SHOWING USER FORM SCREEN ===');
+    console.log('window.widgetConfig:', window.widgetConfig);
+    console.log('localStorage chatbot_form_submitted:', localStorage.getItem('chatbot_form_submitted'));
+    
+    // Check if user has already submitted form
+    const hasSubmittedForm = localStorage.getItem('chatbot_form_submitted');
+    if(hasSubmittedForm === 'true') {
+      console.log('User has already submitted form, checking starter questions');
+      showStarterQuestionsScreen();
+      return;
+    }
+    
+    // Check if form is enabled
+    if(!window.widgetConfig || !window.widgetConfig.form_enabled) {
+      console.log('Form not enabled, checking starter questions');
+      console.log('widgetConfig form_enabled:', window.widgetConfig?.form_enabled);
+      showStarterQuestionsScreen();
+      return;
+    }
+    
+    // Clear form screen
+    formScreen.innerHTML = '';
+    
+    // Get form fields
+    const fields = window.widgetConfig.fields || [];
+    if(fields.length === 0) {
+      console.log('No form fields, checking starter questions');
+      showStarterQuestionsScreen();
+      return;
+    }
+    
+    // Create title
+    const title = el('div', 'cb-form-title');
+    title.textContent = 'Let\'s get started!';
+    title.style.cssText = `
+      font-size: 24px; font-weight: 700; color: var(--cb-gray-800);
+      margin-bottom: 8px;
+    `;
+    
+    // Create subtitle
+    const subtitle = el('div', 'cb-form-subtitle');
+    subtitle.textContent = 'Please fill out this quick form to continue';
+    subtitle.style.cssText = `
+      font-size: 16px; color: var(--cb-gray-600);
+      margin-bottom: 32px;
+    `;
+    
+    // Create form
+    const form = el('form', 'cb-user-form');
+    form.style.cssText = `
+      display: flex; flex-direction: column; gap: 20px;
+      width: 100%; max-width: 400px; text-align: left;
+    `;
+    
+    // Create form fields
+    fields.forEach((field, index) => {
+      const fieldContainer = el('div', 'cb-form-field');
+      fieldContainer.style.cssText = `
+        display: flex; flex-direction: column; gap: 8px;
+      `;
+      
+      // Label
+      const label = el('label', 'cb-form-label');
+      label.textContent = field.label;
+      if(field.required) {
+        label.textContent += ' *';
+      }
+      label.style.cssText = `
+        font-size: 14px; font-weight: 600; color: var(--cb-gray-700);
+      `;
+      
+      // Input
+      const input = document.createElement(field.type === 'textarea' ? 'textarea' : 'input');
+      input.type = field.type === 'textarea' ? 'text' : field.type;
+      input.name = field.name;
+      input.placeholder = field.placeholder || '';
+      input.required = field.required;
+      input.style.cssText = `
+        padding: 12px 16px; border: 2px solid var(--cb-gray-300);
+        border-radius: 8px; font-size: 14px; color: var(--cb-gray-800);
+        background: #fff; transition: border-color 0.2s ease;
+        font-family: inherit;
+      `;
+      
+      if(field.type === 'textarea') {
+        input.rows = 3;
+        input.style.resize = 'vertical';
+      }
+      
+      // Focus effects
+      input.addEventListener('focus', () => {
+        input.style.borderColor = 'var(--cb-primary)';
+        input.style.boxShadow = '0 0 0 3px rgba(59, 130, 246, 0.1)';
+      });
+      
+      input.addEventListener('blur', () => {
+        input.style.borderColor = 'var(--cb-gray-300)';
+        input.style.boxShadow = 'none';
+      });
+      
+      fieldContainer.appendChild(label);
+      fieldContainer.appendChild(input);
+      form.appendChild(fieldContainer);
+    });
+    
+    // Submit button
+    const submitBtn = el('button', 'cb-form-submit');
+    submitBtn.type = 'submit';
+    submitBtn.textContent = 'Continue';
+    submitBtn.style.cssText = `
+      padding: 14px 24px; background: var(--cb-primary);
+      color: #fff; border: none; border-radius: 8px;
+      font-size: 16px; font-weight: 600; cursor: pointer;
+      transition: all 0.2s ease; margin-top: 8px;
+    `;
+    
+    // Hover effects
+    submitBtn.addEventListener('mouseenter', () => {
+      submitBtn.style.background = 'var(--cb-primary-dark)';
+      submitBtn.style.transform = 'translateY(-1px)';
+      submitBtn.style.boxShadow = 'var(--cb-shadow-md)';
+    });
+    
+    submitBtn.addEventListener('mouseleave', () => {
+      submitBtn.style.background = 'var(--cb-primary)';
+      submitBtn.style.transform = 'translateY(0)';
+      submitBtn.style.boxShadow = 'none';
+    });
+    
+    form.appendChild(submitBtn);
+    
+    // Form submission handler
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      console.log('Form submitted');
+      
+      // Disable submit button
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Submitting...';
+      
+      try {
+        // Collect form data
+        const formData = new FormData(form);
+        const data = {};
+        fields.forEach(field => {
+          data[field.name] = formData.get(field.name) || '';
+        });
+        
+        console.log('Submitting form data:', data);
+        
+        // Submit form with timeout
+        console.log('Calling API with data:', data);
+        const submitPromise = api('form/submit', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'X-Client-ID': getClientId()
+          },
+          body: JSON.stringify(data)
+        });
+        
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Form submission timeout')), 10000)
+        );
+        
+        const response = await Promise.race([submitPromise, timeoutPromise]);
+        
+        console.log('API response:', response);
+        console.log('Form submitted successfully');
+        
+        // Mark form as submitted
+        localStorage.setItem('chatbot_form_submitted', 'true');
+        
+        // Show starter questions
+        console.log('Form submitted, showing starter questions screen');
+        
+        // Reset form button
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Continue';
+        
+        showStarterQuestionsScreen();
+        
+      } catch (error) {
+        console.error('Form submission failed:', error);
+        
+        // Show error message
+        const errorMsg = el('div', 'cb-form-error');
+        errorMsg.textContent = `Failed to submit form: ${error.message}. Please try again.`;
+        errorMsg.style.cssText = `
+          color: #dc2626; background: #fef2f2; border: 1px solid #fecaca;
+          padding: 12px; border-radius: 8px; margin-top: 16px;
+          font-size: 14px; text-align: center;
+        `;
+        form.appendChild(errorMsg);
+        
+        // Re-enable submit button
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Continue';
+        
+        // Remove error message after 5 seconds
+        setTimeout(() => {
+          if(errorMsg.parentNode) {
+            errorMsg.remove();
+          }
+        }, 5000);
+      }
+    });
+    
+    // Assemble the screen
+    formScreen.appendChild(title);
+    formScreen.appendChild(subtitle);
+    formScreen.appendChild(form);
+    
+    // Show form screen, hide others
+    formScreen.style.display = 'flex';
+    starterScreen.style.display = 'none';
+    chatWrapper.style.display = 'none';
+    
+    console.log('User form screen created and shown');
+  }
+  
   function showStarterQuestionsScreen() {
     console.log('=== SHOWING STARTER QUESTIONS SCREEN ===');
     console.log('Starter questions data:', window.starterQuestions);
+    console.log('starterQuestions enabled:', window.starterQuestions?.enabled);
     
     // Check if user has already seen starter questions
     const hasSeenStarterQuestions = localStorage.getItem('chatbot_starter_seen');
+    console.log('hasSeenStarterQuestions:', hasSeenStarterQuestions);
     if(hasSeenStarterQuestions === 'true') {
       console.log('User has already seen starter questions, showing chat directly');
       showChatScreen();
@@ -421,18 +652,20 @@
     
     // Check if we have starter questions
     if(!window.starterQuestions || !window.starterQuestions.enabled) {
-      console.log('No starter questions, showing chat directly');
-      showChatScreen();
+      console.log('No starter questions or disabled, showing chat directly');
+      console.log('starterQuestions exists:', !!window.starterQuestions);
+      console.log('starterQuestions enabled:', window.starterQuestions?.enabled);
+      console.log('Calling showChatScreen()...');
+      
+      // Ensure chat screen is visible
+      setTimeout(() => {
+        showChatScreen();
+      }, 50);
       return;
     }
     
-    // Get non-empty questions
-    const questions = [
-      window.starterQuestions.question_1,
-      window.starterQuestions.question_2,
-      window.starterQuestions.question_3,
-      window.starterQuestions.question_4
-    ].filter(q => q && q.trim());
+    // Get questions from the dynamic array
+    const questions = (window.starterQuestions.questions || []).filter(q => q && q.trim());
     
     console.log('Questions to show:', questions);
     
@@ -525,26 +758,42 @@
     starterScreen.appendChild(questionsContainer);
     starterScreen.appendChild(skipBtn);
     
-    // Show starter screen, hide chat (no animation)
+    // Show starter screen, hide others (no animation)
+    formScreen.style.display = 'none';
     starterScreen.style.display = 'flex';
     starterScreen.style.opacity = '1';
     starterScreen.style.transform = 'none';
+    starterScreen.style.visibility = 'visible';
     chatWrapper.style.display = 'none';
     
     console.log('Starter questions screen created and shown');
+    console.log('starterScreen display:', starterScreen.style.display);
+    console.log('starterScreen computed display:', window.getComputedStyle(starterScreen).display);
   }
   
   function showChatScreen() {
     console.log('=== SHOWING CHAT SCREEN ===');
+    console.log('formScreen display:', formScreen.style.display);
+    console.log('starterScreen display:', starterScreen.style.display);
+    console.log('chatWrapper display before:', chatWrapper.style.display);
     
     // Load messages first
     loadMessages().catch(e => console.error('Failed to load messages:', e));
     
     // Instant transition (no animation)
+    formScreen.style.display = 'none';
     starterScreen.style.display = 'none';
     chatWrapper.style.display = 'flex';
     chatWrapper.style.opacity = '1';
     chatWrapper.style.transform = 'none';
+    
+    // Force visibility
+    chatWrapper.style.visibility = 'visible';
+    chatWrapper.style.position = 'relative';
+    
+    console.log('chatWrapper display after:', chatWrapper.style.display);
+    console.log('chatWrapper computed style:', window.getComputedStyle(chatWrapper).display);
+    console.log('chatWrapper visibility:', window.getComputedStyle(chatWrapper).visibility);
   }
   
   function sendQuestionAndShowChat(question) {
@@ -585,10 +834,15 @@
       const wc=await api('widget-config'); 
       if(!wc) return;
       
+      // Set global widget config
+      window.widgetConfig = wc;
+      console.log('Widget config loaded:', wc);
+      
       // Load messaging configuration
       let messagingConfig = null;
       try {
         messagingConfig = await api('messaging-config');
+        window.messagingConfig = messagingConfig;
       } catch (e) {
         console.warn('Failed to load messaging config:', e);
       }
@@ -597,12 +851,11 @@
       let starterQuestions = null;
       try {
         starterQuestions = await api('starter-questions');
+        window.starterQuestions = starterQuestions;
         console.log('Loaded starter questions:', starterQuestions);
       } catch (e) {
         console.warn('Failed to load starter questions:', e);
       } 
-      
-      // Form fields removed 
       
       // Update primary color
       if(wc.primary_color){ 
@@ -751,14 +1004,26 @@
         }
       } 
       panel.classList.toggle('open'); 
-      if(!was) {
-        startPoll();
-        // Show starter questions screen after panel opens
-        setTimeout(() => {
-          console.log('Panel opened, showing starter questions screen');
-          showStarterQuestionsScreen();
-        }, 100);
-      } else {
+        if(!was) {
+          startPoll();
+          // Show user form screen after panel opens
+          setTimeout(() => {
+            console.log('Panel opened, showing user form screen');
+            showUserFormScreen();
+            
+            // Fallback: if no screen is shown after 500ms, show chat
+            setTimeout(() => {
+              const formVisible = formScreen.style.display === 'flex';
+              const starterVisible = starterScreen.style.display === 'flex';
+              const chatVisible = chatWrapper.style.display === 'flex';
+              
+              if(!formVisible && !starterVisible && !chatVisible) {
+                console.log('No screen visible, showing chat as fallback');
+                showChatScreen();
+              }
+            }, 500);
+          }, 100);
+        } else {
         stopPoll(); 
       }
     };
@@ -789,9 +1054,40 @@
     // Form functions removed
     injectStyles(); loadMessages().catch(()=>{});
     return { 
-      open:()=>{ panel.classList.add('open'); startPoll(); }, 
-      close:()=>{ panel.classList.remove('open'); stopPoll(); },
-      resetStarterQuestions:()=>{ localStorage.removeItem('chatbot_starter_seen'); console.log('Starter questions flag reset'); }
+        open:()=>{ panel.classList.add('open'); startPoll(); }, 
+        close:()=>{ panel.classList.remove('open'); stopPoll(); },
+        resetStarterQuestions:()=>{ localStorage.removeItem('chatbot_starter_seen'); console.log('Starter questions flag reset'); },
+        resetForm:()=>{ localStorage.removeItem('chatbot_form_submitted'); console.log('Form submission flag reset'); },
+        resetAll:()=>{ localStorage.removeItem('chatbot_form_submitted'); localStorage.removeItem('chatbot_starter_seen'); console.log('All flags reset'); },
+        clearStorage:()=>{ localStorage.clear(); console.log('All localStorage cleared'); },
+        testStarterQuestions:()=>{ 
+          console.log('=== TESTING STARTER QUESTIONS ===');
+          console.log('window.starterQuestions:', window.starterQuestions);
+          console.log('starterScreen element:', starterScreen);
+          console.log('starterScreen display:', starterScreen.style.display);
+          console.log('starterScreen computed display:', window.getComputedStyle(starterScreen).display);
+          showStarterQuestionsScreen();
+        },
+        debugFlow:()=>{ 
+          console.log('=== DEBUG FLOW ===');
+          console.log('widgetConfig:', window.widgetConfig);
+          console.log('starterQuestions:', window.starterQuestions);
+          console.log('formScreen display:', formScreen.style.display);
+          console.log('starterScreen display:', starterScreen.style.display);
+          console.log('chatWrapper display:', chatWrapper.style.display);
+          console.log('localStorage form_submitted:', localStorage.getItem('chatbot_form_submitted'));
+          console.log('localStorage starter_seen:', localStorage.getItem('chatbot_starter_seen'));
+        },
+        resetFormButton:()=>{
+          const submitBtn = document.querySelector('.cb-form button[type="submit"]');
+          if(submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Continue';
+            console.log('Form button reset');
+          } else {
+            console.log('Form button not found');
+          }
+        }
     };
   }
   window.createChatbotWidget=function(options){ injectStyles(); return new ChatbotWidget(options); };
