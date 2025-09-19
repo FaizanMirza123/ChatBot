@@ -44,6 +44,38 @@ app.add_middleware(
 # Serve static assets (embeddable widget)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# iFrame endpoint for widget embedding
+@app.get("/widget-iframe", response_class=HTMLResponse)
+async def widget_iframe():
+    """Serve the widget as an iframe for embedding"""
+    return HTMLResponse(content="""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chatbot Widget</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        #chatbot-widget {
+            width: 100%;
+            height: 100vh;
+        }
+    </style>
+</head>
+<body>
+    <div id="chatbot-widget"></div>
+    <script src="/static/chatbot-widget.v2.js" data-api-base="/" defer onload="window.createChatbotWidget({ apiBase: '/' });"></script>
+</body>
+</html>
+    """)
+
 # Create uploads directory
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
