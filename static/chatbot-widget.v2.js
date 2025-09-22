@@ -45,6 +45,9 @@
       background:#f0f9ff !important;
       border:2px solid #3b82f6 !important;
       display:block !important;
+      flex:1;overflow-y:auto;
+      -webkit-overflow-scrolling:touch;
+      max-height:calc(100vh - 300px);
     }
     .cb-starter-title{
       font-size:14px;font-weight:600;color:var(--cb-gray-700);
@@ -52,12 +55,15 @@
     }
     .cb-starter-grid{
       display:grid;grid-template-columns:1fr 1fr;gap:8px;
+      flex:1;overflow-y:auto;
+      -webkit-overflow-scrolling:touch;
     }
     .cb-starter-question{
       background:#fff;border:1px solid var(--cb-gray-300);
       border-radius:8px;padding:8px 12px;font-size:13px;
       color:var(--cb-gray-700);cursor:pointer;transition:all 0.2s ease;
       text-align:left;word-wrap:break-word;
+      min-height:40px;display:flex;align-items:center;
     }
     .cb-starter-question:hover{
       background:var(--cb-primary);color:#fff;border-color:var(--cb-primary);
@@ -78,6 +84,9 @@
       border-radius:20px;box-shadow:var(--cb-shadow-xl);
       display:none;flex-direction:column;overflow:hidden;
       border:1px solid var(--cb-gray-200);
+    }
+    .cb-panel-content{
+      flex:1;display:flex;flex-direction:column;min-height:0;
     }
     .cb-panel.open{
       display:flex;
@@ -124,12 +133,16 @@
     .cb-form{
       display:flex;flex-direction:column;gap:16px;
       align-items:stretch;min-height:200px;
+      flex:1;overflow-y:auto;
+      -webkit-overflow-scrolling:touch;
+      padding-right:8px;max-height:calc(100vh - 300px);
     }
     .cb-form input,.cb-form textarea{
       padding:12px 16px;border:2px solid var(--cb-primary);
       border-radius:12px;font-size:14px;width:100%;
       box-sizing:border-box;transition:all 0.2s ease;
       background:#fff;
+      flex-shrink:0;
     }
     .cb-form input:focus,.cb-form textarea:focus{
       outline:none;border-color:var(--cb-primary);
@@ -229,6 +242,7 @@
       padding:12px 20px;font-size:12px;color:var(--cb-gray-400);
       text-align:center;border-top:1px solid var(--cb-gray-200);
       background:var(--cb-gray-50);font-weight:500;
+      flex-shrink:0;z-index:10;position:relative;
     }
     
     @media (max-width:480px){
@@ -236,6 +250,10 @@
       .cb-panel.left{left:24px;right:24px}
       .cb-message.user{margin-left:10%}
       .cb-message.assistant{margin-right:10%}
+      .cb-starter-grid{grid-template-columns:1fr;gap:12px}
+      .cb-questions-container{grid-template-columns:1fr;gap:12px}
+      .cb-form{max-height:calc(100vh - 250px)}
+      .cb-starter-questions{max-height:calc(100vh - 250px)}
     }
   `; }  
   function createRoot(){ let existing=document.getElementById(WIDGET_ID); if(existing) return existing; const r=document.createElement('div'); r.id=WIDGET_ID; document.body.appendChild(r); return r; }
@@ -334,15 +352,17 @@
     // User form screen (shown first)
     const formScreen=el('div','cb-form-screen');
     formScreen.style.cssText=`
-      display:flex;flex-direction:column;align-items:center;justify-content:center;
-      padding:40px 20px;text-align:center;min-height:400px;
+      display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
+      padding:20px;text-align:center;flex:1;min-height:0;
+      overflow-y:auto;-webkit-overflow-scrolling:touch;
     `;
     
     // Starter questions screen (shown after form)
     const starterScreen=el('div','cb-starter-screen');
     starterScreen.style.cssText=`
-      display:flex;flex-direction:column;align-items:center;justify-content:center;
-      padding:40px 20px;text-align:center;min-height:400px;
+      display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
+      padding:20px;text-align:center;flex:1;min-height:0;
+      overflow-y:auto;-webkit-overflow-scrolling:touch;
     `;
   
   // Chat wrapper (shown after question selection)
@@ -464,6 +484,7 @@
     form.style.cssText = `
       display: flex; flex-direction: column; gap: 20px;
       width: 100%; max-width: 400px; text-align: left;
+      flex-shrink: 0;
     `;
     
     // Create form fields
@@ -695,7 +716,10 @@
     const questionsContainer = el('div', 'cb-questions-container');
     questionsContainer.style.cssText = `
       display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
-      width: 100%; max-width: 500px;
+      width: 100%; max-width: 500px; flex-shrink: 0;
+      flex: 1; overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding-right: 8px;
     `;
     
     // Create question buttons

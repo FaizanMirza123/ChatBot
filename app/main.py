@@ -1930,3 +1930,201 @@ async def get_user_detail(user_id: int, db: Session = Depends(get_db), _: bool =
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching user detail: {str(e)}")
+
+# Analytics endpoints
+@app.get("/api/analytics/summary")
+async def get_analytics_summary(db: Session = Depends(get_db), _: bool = Depends(require_admin)):
+    """Get analytics summary data"""
+    try:
+        from datetime import datetime, timedelta
+        
+        # Total counts
+        total_users = db.query(User).count()
+        total_sessions = db.query(ChatSession).count()
+        total_messages = db.query(Message).count()
+        
+        # Active users (last 7 days)
+        week_ago = datetime.now() - timedelta(days=7)
+        active_users = db.query(User).filter(User.last_activity >= week_ago).count()
+        
+        # Messages in last 7 days
+        messages_last_week = db.query(Message).filter(Message.created_at >= week_ago).count()
+        
+        # Sessions in last 7 days
+        sessions_last_week = db.query(ChatSession).filter(ChatSession.created_at >= week_ago).count()
+        
+        # Resolution rate (sessions with at least one assistant message)
+        sessions_with_replies = db.query(ChatSession).join(Message).filter(Message.role == "assistant").distinct().count()
+        resolution_rate = (sessions_with_replies / total_sessions * 100) if total_sessions > 0 else 0
+        
+        return {
+            "total_users": total_users,
+            "total_sessions": total_sessions,
+            "total_messages": total_messages,
+            "active_users_7d": active_users,
+            "messages_7d": messages_last_week,
+            "sessions_7d": sessions_last_week,
+            "resolution_rate": round(resolution_rate, 1)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching analytics summary: {str(e)}")
+
+@app.get("/api/analytics/chart-data")
+async def get_analytics_chart_data(days: int = 7, db: Session = Depends(get_db), _: bool = Depends(require_admin)):
+    """Get chart data for the specified number of days"""
+    try:
+        from datetime import datetime, timedelta
+        from sqlalchemy import func, cast, Date
+        
+        # Use current date for calculations
+        end_date = datetime.now().date()
+        start_date = end_date - timedelta(days=days-1)
+        
+        # Get all messages and sessions in the date range
+        messages = db.query(Message).filter(
+            Message.created_at >= datetime.combine(start_date, datetime.min.time()),
+            Message.created_at <= datetime.combine(end_date, datetime.max.time())
+        ).all()
+        
+        sessions = db.query(ChatSession).filter(
+            ChatSession.created_at >= datetime.combine(start_date, datetime.min.time()),
+            ChatSession.created_at <= datetime.combine(end_date, datetime.max.time())
+        ).all()
+        
+        # Count messages and sessions by date
+        message_counts = {}
+        session_counts = {}
+        
+        for msg in messages:
+            date_key = msg.created_at.date()
+            message_counts[date_key] = message_counts.get(date_key, 0) + 1
+        
+        for sess in sessions:
+            date_key = sess.created_at.date()
+            session_counts[date_key] = session_counts.get(date_key, 0) + 1
+        
+        # Create a complete date range
+        date_range = []
+        current_date = start_date
+        while current_date <= end_date:
+            date_range.append(current_date)
+            current_date += timedelta(days=1)
+        
+        # Generate chart data
+        chart_data = []
+        labels = []
+        
+        for date in date_range:
+            # Format labels based on the number of days
+            if days <= 7:
+                labels.append(date.strftime('%d %b'))
+            elif days <= 30:
+                labels.append(date.strftime('%d %b'))
+            else:
+                labels.append(date.strftime('%b %d'))
+            
+            message_count = message_counts.get(date, 0)
+            session_count = session_counts.get(date, 0)
+            
+            # Use message count as primary metric, session count as secondary
+            chart_data.append({
+                'date': date.isoformat(),
+                'messages': message_count,
+                'sessions': session_count,
+                'value': message_count  # For backward compatibility with existing chart
+            })
+        
+        return {
+            'labels': labels,
+            'data': chart_data,
+            'points': [item['value'] for item in chart_data]  # For backward compatibility
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching chart data: {str(e)}")
+
+@app.get("/api/analytics/export")
+async def export_analytics_data(format: str = "csv", db: Session = Depends(get_db), _: bool = Depends(require_admin)):
+    """Export analytics data in CSV or JSON format"""
+    try:
+        from datetime import datetime, timedelta
+        import csv
+        import io
+        import json
+        
+        # Get comprehensive data
+        users = db.query(User).all()
+        sessions = db.query(ChatSession).all()
+        messages = db.query(Message).all()
+        
+        if format.lower() == "csv":
+            output = io.StringIO()
+            writer = csv.writer(output)
+            
+            # Write headers
+            writer.writerow(['Date', 'Metric', 'Value'])
+            
+            # Write user data
+            for user in users:
+                writer.writerow([user.created_at.strftime('%Y-%m-%d'), 'User Created', user.name or 'Anonymous'])
+            
+            # Write session data
+            for session in sessions:
+                writer.writerow([session.created_at.strftime('%Y-%m-%d'), 'Session Created', session.title or 'Untitled'])
+            
+            # Write message data
+            for message in messages:
+                writer.writerow([message.created_at.strftime('%Y-%m-%d'), f'Message ({message.role})', message.content[:50] + '...' if len(message.content) > 50 else message.content])
+            
+            csv_content = output.getvalue()
+            output.close()
+            
+            return {
+                "content": csv_content,
+                "filename": f"analytics_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                "content_type": "text/csv"
+            }
+        
+        else:  # JSON format
+            export_data = {
+                "export_date": datetime.now().isoformat(),
+                "summary": {
+                    "total_users": len(users),
+                    "total_sessions": len(sessions),
+                    "total_messages": len(messages)
+                },
+                "users": [
+                    {
+                        "id": user.id,
+                        "name": user.name,
+                        "email": user.email,
+                        "created_at": user.created_at.isoformat() if user.created_at else None,
+                        "last_activity": user.last_activity.isoformat() if user.last_activity else None
+                    } for user in users
+                ],
+                "sessions": [
+                    {
+                        "id": session.id,
+                        "title": session.title,
+                        "created_at": session.created_at.isoformat() if session.created_at else None,
+                        "last_message_at": session.last_message_at.isoformat() if session.last_message_at else None
+                    } for session in sessions
+                ],
+                "messages": [
+                    {
+                        "id": message.id,
+                        "session_id": message.session_id,
+                        "role": message.role,
+                        "content": message.content,
+                        "created_at": message.created_at.isoformat() if message.created_at else None
+                    } for message in messages
+                ]
+            }
+            
+            return {
+                "content": json.dumps(export_data, indent=2),
+                "filename": f"analytics_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                "content_type": "application/json"
+            }
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error exporting analytics data: {str(e)}")
