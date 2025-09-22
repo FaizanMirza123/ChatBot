@@ -14,6 +14,11 @@ class ChatIn(BaseModel):
     name: Optional[str] = None
     email: Optional[EmailStr] = None
 
+class ChatResponseOut(BaseModel):
+    reply: str
+    used_faq: bool = False
+    run_id: str | None = None
+
 class ChatOut(BaseModel):
     reply: str
     used_faq: bool = False
@@ -155,3 +160,48 @@ class StarterQuestionsOut(BaseModel):
 class StarterQuestionsIn(BaseModel):
     questions: List[str] = []
     enabled: Optional[bool] = None
+
+# Inbox schemas
+class ChatMessageOut(BaseModel):
+    id: int
+    role: str
+    content: str
+    created_at: str
+
+class ChatOut(BaseModel):
+    id: int
+    title: str
+    preview: str
+    user_name: Optional[str] = None
+    user_email: Optional[str] = None
+    ip_address: Optional[str] = None
+    created_at: str
+    last_message_at: str
+    message_count: int
+
+class ChatDetailOut(BaseModel):
+    id: int
+    title: str
+    user_info: Dict[str, Any]
+    messages: List[ChatMessageOut]
+    created_at: str
+    last_message_at: str
+
+class UserOut(BaseModel):
+    id: int
+    name: Optional[str] = None
+    email: Optional[str] = None
+    ip_address: Optional[str] = None
+    last_activity: str
+    chat_count: int
+    created_at: str
+
+class UserDetailOut(BaseModel):
+    id: int
+    name: Optional[str] = None
+    email: Optional[str] = None
+    ip_address: Optional[str] = None
+    created_at: str
+    last_activity: str
+    chat_count: int
+    sessions: List[Dict[str, Any]]

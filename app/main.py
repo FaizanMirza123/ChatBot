@@ -3,11 +3,13 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import func
+from typing import List
 from openai import OpenAI
 from config import settings
 from db import get_db, Base, engine
-from models import Prompt, KnowledgeDocument, Message, User, Session as ChatSession, Lead, WidgetConfig, FAQ, DocumentVisibility, MessagingConfig, StarterQuestions
-from schemas import ChatIn, ChatOut, SystemPromptIn, SystemPromptOut, DocumentUploadOut, DocumentListOut, DocumentDeleteOut
+from models import Prompt, KnowledgeDocument, Message, User, Session as ChatSession, Lead, WidgetConfig, FAQ, DocumentVisibility, MessagingConfig, StarterQuestions, FormResponse
+from schemas import ChatIn, ChatResponseOut, SystemPromptIn, SystemPromptOut, DocumentUploadOut, DocumentListOut, DocumentDeleteOut, ChatMessageOut, ChatDetailOut, UserOut, UserDetailOut, ChatOut
 from schemas import LeadIn, LeadOut, WidgetConfigOut, WidgetConfigIn
 from schemas import FormField, BotConfigOut, BotConfigIn, MessagingConfigOut, MessagingConfigIn, StarterQuestionsOut, StarterQuestionsIn
 from services.rag_service import RAGService
@@ -128,15 +130,51 @@ def require_admin(x_api_key: str | None = Header(default=None)):
     return True
 
 # ----- Per-client isolation helpers -----
-def _get_or_create_client_session(db: Session, client_id: str) -> ChatSession:
-    """Return a per-client session keyed by a stable client_id (from header or body)."""
+def _get_client_session(db: Session, client_id: str) -> ChatSession | None:
+    """Get existing session for client, return None if no session exists."""
+    user = db.query(User).filter(User.external_user_id == client_id).first()
+    if not user:
+        return None
+    
+    sess = (
+        db.query(ChatSession)
+        .filter(ChatSession.user_id == user.id, ChatSession.status == "open")
+        .order_by(ChatSession.id.desc())
+        .first()
+    )
+    return sess
+
+def _get_or_create_client_session(db: Session, client_id: str, name: str | None = None, email: str | None = None, ip_address: str | None = None) -> ChatSession:
+    """Return a per-client session keyed by a stable client_id (from header or body).
+    Only creates session when there's actual user interaction (form submit or chat message)."""
     # Each unique client_id maps to one User and one open Session
     user = db.query(User).filter(User.external_user_id == client_id).first()
     if not user:
-        user = User(external_user_id=client_id)
+        user = User(
+            external_user_id=client_id,
+            name=name,
+            email=email,
+            ip_address=ip_address
+        )
         db.add(user)
         db.commit()
         db.refresh(user)
+    else:
+        # Update user info if provided
+        updated = False
+        if name and not user.name:
+            user.name = name
+            updated = True
+        if email and not user.email:
+            user.email = email
+            updated = True
+        if ip_address and not user.ip_address:
+            user.ip_address = ip_address
+            updated = True
+        if updated:
+            user.last_activity = func.now()
+            db.add(user)
+            db.commit()
 
     sess = (
         db.query(ChatSession)
@@ -213,11 +251,13 @@ def _fetch_history_by_token_budget(db: Session, session_id: int) -> list[dict]:
 @app.get("/messages")
 async def get_messages(x_client_id: str | None = Header(default=None), db: Session = Depends(get_db)):
     """Return recent messages for the caller's isolated session, limited by token budget.
-    Uses X-Client-Id header as the isolation key.
+    Uses X-Client-Id header as the isolation key. Only returns messages if session exists.
     """
     try:
         client_id = x_client_id or "anonymous"
-        sess = _get_or_create_client_session(db, client_id)
+        sess = _get_client_session(db, client_id)
+        if not sess:
+            return {"messages": []}
         trimmed = _fetch_history_by_token_budget(db, sess.id)
         # Return trimmed messages in chronological order
         return {"messages": trimmed}
@@ -226,8 +266,8 @@ async def get_messages(x_client_id: str | None = Header(default=None), db: Sessi
 
 # Removed multi-session management endpoints in single-session mode
 
-@app.post("/chat", response_model=ChatOut)
-async def chat(chat_data: ChatIn, x_client_id: str | None = Header(default=None), db: Session = Depends(get_db)):
+@app.post("/chat", response_model=ChatResponseOut)
+async def chat(chat_data: ChatIn, x_client_id: str | None = Header(default=None), x_forwarded_for: str | None = Header(default=None), x_real_ip: str | None = Header(default=None), db: Session = Depends(get_db)):
     """Chat endpoint with token-budgeted message history.
     - Loads recent messages for the session within token limits
     - Persists the new user message and the assistant reply
@@ -236,9 +276,23 @@ async def chat(chat_data: ChatIn, x_client_id: str | None = Header(default=None)
     try:
         system_prompt = get_current_system_prompt(db)
 
+        # Extract IP address from headers
+        ip_address = None
+        if x_real_ip:
+            ip_address = x_real_ip
+        elif x_forwarded_for:
+            # X-Forwarded-For can contain multiple IPs, take the first one
+            ip_address = x_forwarded_for.split(',')[0].strip()
+
         # Build OpenAI-formatted history for the caller's isolated session
         client_id = (chat_data.client_id or x_client_id or "anonymous").strip() or "anonymous"
-        sess = _get_or_create_client_session(db, client_id)
+        sess = _get_or_create_client_session(
+            db, 
+            client_id, 
+            name=chat_data.name, 
+            email=chat_data.email, 
+            ip_address=ip_address
+        )
         raw_history = _fetch_history_by_token_budget(db, sess.id)
 
         # Add system prompt and trim to token budget
@@ -282,6 +336,15 @@ async def chat(chat_data: ChatIn, x_client_id: str | None = Header(default=None)
         # Persist the current user message
         user_msg = Message(session_id=sess.id, role="user", content=chat_data.message)
         db.add(user_msg)
+        
+        # Update session's last_message_at timestamp
+        sess.last_message_at = func.now()
+        
+        # Set session title from first user message if not already set
+        if not sess.title:
+            sess.title = chat_data.message[:50] + "..." if len(chat_data.message) > 50 else chat_data.message
+        
+        db.add(sess)
         db.commit()
         db.refresh(user_msg)
 
@@ -304,13 +367,17 @@ async def chat(chat_data: ChatIn, x_client_id: str | None = Header(default=None)
         # Persist assistant reply
         assistant_msg = Message(session_id=sess.id, role="assistant", content=reply)
         db.add(assistant_msg)
+        
+        # Update session's last_message_at timestamp again for assistant message
+        sess.last_message_at = func.now()
+        db.add(sess)
         db.commit()
 
-        return ChatOut(reply=reply, used_faq=used_kb, run_id="rag-response")
+        return ChatResponseOut(reply=reply, used_faq=used_kb, run_id="rag-response")
 
     except Exception as e:
         db.rollback()
-        return ChatOut(reply=f"Error: {str(e)}", used_faq=False, run_id=None)
+        return ChatResponseOut(reply=f"Error: {str(e)}", used_faq=False, run_id=None)
 
 @app.get("/system-prompt", response_model=SystemPromptOut)
 async def get_system_prompt(db: Session = Depends(get_db)):
@@ -703,7 +770,7 @@ async def upload_avatar(file: UploadFile = File(...), db: Session = Depends(get_
 
 # Dynamic form submission (generic) - optional future replacement for /lead
 @app.post("/form/submit")
-async def submit_dynamic_form(payload: dict, x_client_id: str | None = Header(default=None), db: Session = Depends(get_db)):
+async def submit_dynamic_form(payload: dict, x_client_id: str | None = Header(default=None), x_forwarded_for: str | None = Header(default=None), x_real_ip: str | None = Header(default=None), db: Session = Depends(get_db)):
     cfg = _get_or_create_widget_config(db)
     fields = cfg.form_fields or []
     # basic validation
@@ -721,14 +788,58 @@ async def submit_dynamic_form(payload: dict, x_client_id: str | None = Header(de
                 normalized[key] = val
     if required_missing:
         raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(required_missing)}")
-    # store alongside existing lead semantics if email field present
-    email_val = normalized.get('email')
-    name_val = normalized.get('name')
-    if email_val:
-        # reuse save_lead logic path for persistence in leads table
-        try:
-            client_id = (x_client_id or 'anonymous').strip() or 'anonymous'
-            user = _get_or_create_user_by_client_id(db, client_id)
+    
+    # Extract IP address from headers
+    ip_address = None
+    if x_real_ip:
+        ip_address = x_real_ip
+    elif x_forwarded_for:
+        # X-Forwarded-For can contain multiple IPs, take the first one
+        ip_address = x_forwarded_for.split(',')[0].strip()
+    
+    # Get form data - check both lowercase and capitalized versions
+    email_val = normalized.get('email') or normalized.get('Email')
+    name_val = normalized.get('name') or normalized.get('Name')
+    client_id = (x_client_id or 'anonymous').strip() or 'anonymous'
+    
+    # Debug logging
+    print(f"DEBUG: normalized data: {normalized}")
+    print(f"DEBUG: email_val: {email_val}, name_val: {name_val}")
+    
+    try:
+        # Create or update user and session when form is submitted
+        sess = _get_or_create_client_session(
+            db, 
+            client_id, 
+            name=name_val, 
+            email=email_val, 
+            ip_address=ip_address
+        )
+        
+        # Update user data if provided
+        if name_val or email_val:
+            user = db.query(User).filter(User.id == sess.user_id).first()
+            if user:
+                if name_val and not user.name:
+                    user.name = name_val
+                if email_val and not user.email:
+                    user.email = email_val
+                if ip_address and not user.ip_address:
+                    user.ip_address = ip_address
+                user.last_activity = func.now()
+                db.add(user)
+        
+        # Store form response
+        form_response = FormResponse(
+            form_id=1,  # Assuming form ID 1 for dynamic form
+            user_id=sess.user_id,
+            client_id=client_id,
+            response_json=normalized
+        )
+        db.add(form_response)
+        
+        # Update lead if email present
+        if email_val:
             existing = (
                 db.query(Lead)
                 .filter(Lead.client_id == client_id)
@@ -739,17 +850,19 @@ async def submit_dynamic_form(payload: dict, x_client_id: str | None = Header(de
                 if name_val is not None:
                     existing.name = name_val
                 existing.email = str(email_val)
-                db.add(existing); db.commit(); db.refresh(existing)
+                db.add(existing)
             else:
-                new_lead = Lead(user_id=user.id, client_id=client_id, name=name_val or '', email=str(email_val))
-                db.add(new_lead); db.commit(); db.refresh(new_lead)
-        except Exception as e:
-            db.rollback()
-            raise HTTPException(status_code=500, detail=f"Error saving lead: {str(e)}")
-    return {"saved": True, "data": normalized}
+                new_lead = Lead(user_id=sess.user_id, client_id=client_id, name=name_val or '', email=str(email_val))
+                db.add(new_lead)
+        
+        db.commit()
+        return {"saved": True, "data": normalized}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error saving form: {str(e)}")
 
 # Chat/message aliases under /api for embedders that prefix paths
-@app.post("/api/chat", response_model=ChatOut)
+@app.post("/api/chat", response_model=ChatResponseOut)
 async def chat_api(chat_data: ChatIn, x_client_id: str | None = Header(default=None), db: Session = Depends(get_db)):
     return await chat(chat_data=chat_data, x_client_id=x_client_id, db=db)
 
@@ -1657,3 +1770,163 @@ async def list_faqs_api(db: Session = Depends(get_db)):
 @app.delete("/api/faqs/{faq_id}")
 async def delete_faq_api(faq_id: int, db: Session = Depends(get_db), _: bool = Depends(require_admin)):
     return await delete_faq(faq_id=faq_id, db=db)
+
+# Inbox endpoints
+@app.get("/api/inbox/chats", response_model=List[ChatOut])
+async def get_chats(db: Session = Depends(get_db), _: bool = Depends(require_admin)):
+    """Get all chat sessions for inbox"""
+    try:
+        # Get sessions with user info and message counts
+        sessions = db.query(ChatSession).join(User).order_by(ChatSession.last_message_at.desc().nullslast(), ChatSession.created_at.desc()).all()
+        
+        chat_list = []
+        for session in sessions:
+            # Get message count
+            message_count = db.query(Message).filter(Message.session_id == session.id).count()
+            
+            # Get first user message for preview
+            first_user_message = db.query(Message).filter(
+                Message.session_id == session.id,
+                Message.role == "user"
+            ).order_by(Message.created_at.asc()).first()
+            
+            preview = first_user_message.content[:100] + "..." if first_user_message and len(first_user_message.content) > 100 else (first_user_message.content if first_user_message else "No messages")
+            
+            # Generate title from first message or use default
+            title = session.title or (first_user_message.content[:50] + "..." if first_user_message and len(first_user_message.content) > 50 else (first_user_message.content if first_user_message else "New Chat"))
+            
+            # Get user info from lead if available
+            lead = db.query(Lead).filter(Lead.client_id == session.user.external_user_id).first()
+            user_name = lead.name if lead else None
+            user_email = lead.email if lead else None
+            
+            chat_list.append(ChatOut(
+                id=session.id,
+                title=title,
+                preview=preview,
+                user_name=user_name,
+                user_email=user_email,
+                ip_address=session.user.ip_address,
+                created_at=session.created_at.isoformat(),
+                last_message_at=session.last_message_at.isoformat() if session.last_message_at else session.created_at.isoformat(),
+                message_count=message_count
+            ))
+        
+        return chat_list
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching chats: {str(e)}")
+
+@app.get("/api/inbox/chats/{chat_id}", response_model=ChatDetailOut)
+async def get_chat_detail(chat_id: int, db: Session = Depends(get_db), _: bool = Depends(require_admin)):
+    """Get detailed chat information including all messages"""
+    try:
+        session = db.query(ChatSession).filter(ChatSession.id == chat_id).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="Chat not found")
+        
+        # Get all messages for this session
+        messages = db.query(Message).filter(Message.session_id == chat_id).order_by(Message.created_at.asc()).all()
+        
+        # Get user info from lead if available
+        lead = db.query(Lead).filter(Lead.client_id == session.user.external_user_id).first()
+        
+        user_info = {
+            "name": lead.name if lead else session.user.name,
+            "email": lead.email if lead else session.user.email,
+            "user_id": session.user.external_user_id,
+            "ip_address": session.user.ip_address,
+            "chat_id": str(chat_id)
+        }
+        
+        message_list = [
+            ChatMessageOut(
+                id=msg.id,
+                role=msg.role,
+                content=msg.content,
+                created_at=msg.created_at.isoformat()
+            )
+            for msg in messages
+        ]
+        
+        return ChatDetailOut(
+            id=session.id,
+            title=session.title or "Chat",
+            user_info=user_info,
+            messages=message_list,
+            created_at=session.created_at.isoformat(),
+            last_message_at=session.last_message_at.isoformat() if session.last_message_at else session.created_at.isoformat()
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching chat detail: {str(e)}")
+
+@app.get("/api/inbox/users", response_model=List[UserOut])
+async def get_users(db: Session = Depends(get_db), _: bool = Depends(require_admin)):
+    """Get all users for inbox"""
+    try:
+        # Get users with their session counts
+        users = db.query(User).order_by(User.last_activity.desc().nullslast(), User.created_at.desc()).all()
+        
+        user_list = []
+        for user in users:
+            # Count sessions for this user
+            session_count = db.query(ChatSession).filter(ChatSession.user_id == user.id).count()
+            
+            # Get user info from lead if available
+            lead = db.query(Lead).filter(Lead.client_id == user.external_user_id).first()
+            
+            user_list.append(UserOut(
+                id=user.id,
+                name=lead.name if lead else user.name,
+                email=lead.email if lead else user.email,
+                ip_address=user.ip_address,
+                last_activity=user.last_activity.isoformat() if user.last_activity else (user.created_at.isoformat() if user.created_at else 'Unknown'),
+                chat_count=session_count,
+                created_at=user.created_at.isoformat() if user.created_at else 'Unknown'
+            ))
+        
+        return user_list
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching users: {str(e)}")
+
+@app.get("/api/inbox/users/{user_id}", response_model=UserDetailOut)
+async def get_user_detail(user_id: int, db: Session = Depends(get_db), _: bool = Depends(require_admin)):
+    """Get detailed user information including all sessions"""
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Get all sessions for this user
+        sessions = db.query(ChatSession).filter(ChatSession.user_id == user_id).order_by(ChatSession.created_at.desc()).all()
+        
+        # Get user info from lead if available
+        lead = db.query(Lead).filter(Lead.client_id == user.external_user_id).first()
+        
+        session_list = []
+        for session in sessions:
+            message_count = db.query(Message).filter(Message.session_id == session.id).count()
+            session_list.append({
+                "id": session.id,
+                "title": session.title or "Chat",
+                "status": session.status,
+                "created_at": session.created_at.isoformat(),
+                "last_message_at": session.last_message_at.isoformat() if session.last_message_at else session.created_at.isoformat(),
+                "message_count": message_count
+            })
+        
+        return UserDetailOut(
+            id=user.id,
+            name=lead.name if lead else user.name,
+            email=lead.email if lead else user.email,
+            ip_address=user.ip_address,
+            created_at=user.created_at.isoformat() if user.created_at else 'Unknown',
+            last_activity=user.last_activity.isoformat() if user.last_activity else (user.created_at.isoformat() if user.created_at else 'Unknown'),
+            chat_count=len(sessions),
+            sessions=session_list
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching user detail: {str(e)}")
