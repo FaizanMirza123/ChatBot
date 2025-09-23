@@ -858,8 +858,8 @@ async def submit_dynamic_form(payload: dict, x_client_id: str | None = Header(de
         db.commit()
         return {"saved": True, "data": normalized}
     except Exception as e:
-            db.rollback()
-            raise HTTPException(status_code=500, detail=f"Error saving form: {str(e)}") 
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error saving form: {str(e)}") 
 
 # Chat/message aliases under /api for embedders that prefix paths
 @app.post("/api/chat", response_model=ChatResponseOut)

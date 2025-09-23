@@ -14,6 +14,17 @@ def migrate_database():
     cursor = conn.cursor()
     
     try:
+        # Check if migration has already been completed
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='migration_history'")
+        migration_table_exists = cursor.fetchone()
+        
+        if migration_table_exists:
+            cursor.execute("SELECT version FROM migration_history WHERE migration = 'appearance_migration'")
+            migration_completed = cursor.fetchone()
+            if migration_completed:
+                print("✅ Appearance migration already completed, skipping...")
+                return
+        
         # Check if widget_config table exists
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='widget_config'")
         table_exists = cursor.fetchone()
@@ -81,6 +92,22 @@ def migrate_database():
                         print(f"❌ Failed to add column {column_name}: {e}")
                 else:
                     print(f"✅ Column already exists: {column_name}")
+        
+        # Create migration history table if it doesn't exist
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS migration_history (
+                id INTEGER PRIMARY KEY,
+                migration VARCHAR(100) UNIQUE,
+                version VARCHAR(20),
+                completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Record this migration as completed
+        cursor.execute("""
+            INSERT OR REPLACE INTO migration_history (migration, version) 
+            VALUES ('appearance_migration', '1.0')
+        """)
         
         conn.commit()
         print("✅ Database migration completed successfully!")

@@ -7,6 +7,16 @@ def migrate_inbox_tables(db_path: str):
     cursor = conn.cursor()
 
     try:
+        # Check if migration has already been completed
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='migration_history'")
+        migration_table_exists = cursor.fetchone()
+        
+        if migration_table_exists:
+            cursor.execute("SELECT version FROM migration_history WHERE migration = 'inbox_migration'")
+            migration_completed = cursor.fetchone()
+            if migration_completed:
+                print("✅ Inbox migration already completed, skipping...")
+                return
         # Add new columns to users table
         cursor.execute("PRAGMA table_info(users);")
         columns = [col[1] for col in cursor.fetchall()]
@@ -51,6 +61,22 @@ def migrate_inbox_tables(db_path: str):
             print("Adding client_id column to form_responses table...")
             cursor.execute("ALTER TABLE form_responses ADD COLUMN client_id VARCHAR(128);")
 
+        # Create migration history table if it doesn't exist
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS migration_history (
+                id INTEGER PRIMARY KEY,
+                migration VARCHAR(100) UNIQUE,
+                version VARCHAR(20),
+                completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Record this migration as completed
+        cursor.execute("""
+            INSERT OR REPLACE INTO migration_history (migration, version) 
+            VALUES ('inbox_migration', '1.0')
+        """)
+        
         conn.commit()
         print("Inbox migration completed successfully.")
 

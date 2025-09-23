@@ -16,6 +16,17 @@ def migrate_starter_questions():
     cursor = conn.cursor()
     
     try:
+        # Check if migration has already been completed
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='migration_history'")
+        migration_table_exists = cursor.fetchone()
+        
+        if migration_table_exists:
+            cursor.execute("SELECT version FROM migration_history WHERE migration = 'starter_questions_migration'")
+            migration_completed = cursor.fetchone()
+            if migration_completed:
+                print("✅ Starter questions migration already completed, skipping...")
+                return
+        
         # Check if table exists
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='starter_questions'")
         if not cursor.fetchone():
@@ -77,6 +88,22 @@ def migrate_starter_questions():
                 """)
                 cursor.execute("INSERT INTO starter_questions (id, questions, enabled) VALUES (1, '[]', 1)")
                 print("Created new starter_questions table with default data")
+        
+        # Create migration history table if it doesn't exist
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS migration_history (
+                id INTEGER PRIMARY KEY,
+                migration VARCHAR(100) UNIQUE,
+                version VARCHAR(20),
+                completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Record this migration as completed
+        cursor.execute("""
+            INSERT OR REPLACE INTO migration_history (migration, version) 
+            VALUES ('starter_questions_migration', '1.0')
+        """)
         
         conn.commit()
         print("Migration completed successfully!")
