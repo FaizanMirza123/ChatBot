@@ -21,4 +21,4 @@ echo To run the application:
 echo   cd app
 echo   uvicorn main:app --reload
 echo.
-echo Then open: http://localhost:8000
+echo Then open: https://chatbot.dipietroassociates.com/api

@@ -85,7 +85,7 @@ export default function Page() {
         setGeneralIsLoading(true);
         setUserFormIsLoading(true);
         
-        const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000').replace(/\/$/, '');
+        const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
         const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY || '';
         
         // Load bot config
@@ -167,7 +167,7 @@ export default function Page() {
     setSystemPromptSuccess(null);
     
     try {
-      const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000').replace(/\/$/, '');
+      const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
       const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY || '';
       
       const response = await fetch(`${API_BASE}/system-prompt`, {
@@ -200,7 +200,7 @@ export default function Page() {
     setSystemPromptSuccess(null);
     
     try {
-      const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000').replace(/\/$/, '');
+      const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
       const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY || '';
       
       const response = await fetch(`${API_BASE}/system-prompt`, {
@@ -669,7 +669,7 @@ const SettingsGeneral = forwardRef<{saveBotConfig: () => void, discardChanges: (
   isLoading, setIsLoading, isSaving, setIsSaving, status, setStatus
 }, ref) => {
 
-  const API_BASE = useMemo(()=> (process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000').replace(/\/$/, ''), []);
+  const API_BASE = useMemo(()=> (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, ''), []);
   const ADMIN_KEY = useMemo(()=> process.env.NEXT_PUBLIC_ADMIN_API_KEY || '', []);
 
   // Save bot config
@@ -759,7 +759,7 @@ const SettingsAppearance = forwardRef<{saveWidgetConfig: () => void, discardChan
   const [status, setStatus] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   const [showColorPicker, setShowColorPicker] = useState<boolean>(false);
 
-  const API_BASE = useMemo(()=> (process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000').replace(/\/$/, ''), []);
+  const API_BASE = useMemo(()=> (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, ''), []);
   const ADMIN_KEY = useMemo(()=> process.env.NEXT_PUBLIC_ADMIN_API_KEY || '', []);
 
   const colorOptions = ['#6b4eff','#f97316','#f59e0b','#22c55e','#06b6d4','#3b82f6','#a855f7','#f43f5e','#8b5cf6'];
@@ -1054,7 +1054,7 @@ function UploadField({label, hint, type = 'avatar'}:{label:string; hint:string; 
   const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
   const [status, setStatus] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   
-  const API_BASE = useMemo(()=> (process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000').replace(/\/$/, ''), []);
+  const API_BASE = useMemo(()=> (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, ''), []);
   const ADMIN_KEY = useMemo(()=> process.env.NEXT_PUBLIC_ADMIN_API_KEY || '', []);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -1271,7 +1271,7 @@ const SettingsStarter = forwardRef<{
     const loadStarterQuestions = async () => {
       setIsLoading(true);
       try {
-        const response = await fetch('http://localhost:8000/starter-questions');
+        const response = await fetch('https://chatbot.dipietroassociates.com/api/starter-questions');
         if (response.ok) {
           const data = await response.json();
           const questionsArray = data.questions || [];
@@ -1296,7 +1296,7 @@ const SettingsStarter = forwardRef<{
     setStatus(null);
     
     try {
-      const response = await fetch('http://localhost:8000/starter-questions', {
+      const response = await fetch('https://chatbot.dipietroassociates.com/api/starter-questions', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -1524,7 +1524,7 @@ const SettingsMessaging = forwardRef<{saveMessagingConfig: () => void, discardCh
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [status, setStatus] = useState<{message: string, type: 'success' | 'error'} | null>(null);
 
-  const API_BASE = useMemo(()=> (process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000').replace(/\/$/, ''), []);
+  const API_BASE = useMemo(()=> (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, ''), []);
   const ADMIN_KEY = useMemo(()=> process.env.NEXT_PUBLIC_ADMIN_API_KEY || '', []);
 
   // Load messaging config on mount
@@ -1821,7 +1821,7 @@ function SourcesView(){
 }
 
 function FilesSection(){
-  const API_BASE = useMemo(()=> (process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000').replace(/\/$/, ''), []);
+  const API_BASE = useMemo(()=> (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, ''), []);
   const ADMIN_KEY = useMemo(()=> process.env.NEXT_PUBLIC_ADMIN_API_KEY || '', []);
   const [file, setFile] = useState<File|null>(null);
   const [busy, setBusy] = useState(false);
@@ -1942,7 +1942,7 @@ function FilesSection(){
 }
 
 function FaqsSection(){
-  const API_BASE = useMemo(()=> (process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000').replace(/\/$/, ''), []);
+  const API_BASE = useMemo(()=> (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, ''), []);
   const ADMIN_KEY = useMemo(()=> process.env.NEXT_PUBLIC_ADMIN_API_KEY || '', []);
   const [csv, setCsv] = useState<File|null>(null);
   const [busy, setBusy] = useState(false);
@@ -2159,7 +2159,7 @@ function ConnectView({
 }){
   
   // Get the current API base URL
-  const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api';
   
   // JavaScript integration code
   const javascriptCode = `<!-- Add this code before the closing </body> tag -->
@@ -2593,7 +2593,7 @@ function InboxView({
   const fetchChats = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:8000/api/inbox/chats', {
+      const response = await fetch('https://chatbot.dipietroassociates.com/api/api/inbox/chats', {
         headers: {
           'X-Admin-Key': 'admin123'
         }
@@ -2616,7 +2616,7 @@ function InboxView({
   const fetchUsers = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:8000/api/inbox/users', {
+      const response = await fetch('https://chatbot.dipietroassociates.com/api/api/inbox/users', {
         headers: {
           'X-Admin-Key': 'admin123'
         }
@@ -2638,7 +2638,7 @@ function InboxView({
   // Fetch chat detail
   const fetchChatDetail = useCallback(async (chatId: number) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/inbox/chats/${chatId}`, {
+      const response = await fetch(`https://chatbot.dipietroassociates.com/api/api/inbox/chats/${chatId}`, {
         headers: {
           'X-Admin-Key': 'admin123'
         }
@@ -2655,7 +2655,7 @@ function InboxView({
   // Fetch user detail
   const fetchUserDetail = useCallback(async (userId: number) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/inbox/users/${userId}`, {
+      const response = await fetch(`https://chatbot.dipietroassociates.com/api/api/inbox/users/${userId}`, {
         headers: {
           'X-Admin-Key': 'admin123'
         }
@@ -3103,7 +3103,7 @@ function AnalyticsView(){
     const loadAnalyticsData = async () => {
       try {
         setLoading(true);
-        const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000').replace(/\/$/, '');
+        const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
         const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY || '';
         
         const headers = ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {};
@@ -3135,7 +3135,7 @@ function AnalyticsView(){
   const handleExport = async (format: 'csv' | 'json') => {
     try {
       setExporting(true);
-      const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000').replace(/\/$/, '');
+      const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
       const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY || '';
       
       const headers = ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {};
@@ -3444,7 +3444,7 @@ const SettingsUserForm = forwardRef<{
       setIsSaving(true);
       setStatus(null);
 
-      const response = await fetch('http://localhost:8000/widget-config', {
+      const response = await fetch('https://chatbot.dipietroassociates.com/api/widget-config', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

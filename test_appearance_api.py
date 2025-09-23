@@ -6,7 +6,7 @@ import requests
 import json
 
 def test_appearance_api():
-    base_url = "http://localhost:8000"
+    base_url = "https://chatbot.dipietroassociates.com/api"
     
     print("🧪 Testing Appearance API Endpoints...")
     
