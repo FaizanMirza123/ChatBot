@@ -16,7 +16,7 @@ try:
 except Exception:  # pragma: no cover
     tiktoken = None
 
-from models import KnowledgeDocument, DocumentChunk
+from models import KnowledgeDocument, DocumentChunk, FAQ
 from config import settings
 
 class RAGService:
@@ -225,6 +225,64 @@ class RAGService:
         
         return doc
     
+    def search_faqs(self, db: Session, query: str) -> List[Tuple[str, float, dict]]:
+        """Search FAQs for relevant information using simple text matching."""
+        # Always search FAQs regardless of query type - FAQs should be used for all questions
+        
+        query_lower = query.lower()
+        try:
+            faqs = db.query(FAQ).all()
+        except Exception as e:
+            return []
+        
+        faq_results = []
+        for faq in faqs:
+            question_lower = faq.question.lower()
+            answer_lower = faq.answer.lower()
+            
+            # Calculate relevance score with better matching
+            score = 0
+            query_words = query_lower.split()
+            
+            # Exact question match gets highest score
+            if query_lower in question_lower:
+                score = 100  # Very high score for exact match
+            else:
+                # Check for word matches with better scoring
+                for word in query_words:
+                    if len(word) > 2:  # Only consider words longer than 2 characters
+                        if word in question_lower:
+                            score += 3  # Higher weight for question matches
+                        if word in answer_lower:
+                            score += 1  # Lower weight for answer matches
+                
+                # Check for partial matches
+                for word in query_words:
+                    if len(word) > 3:  # Only for longer words
+                        if any(word in q_word for q_word in question_lower.split()):
+                            score += 2
+                        if any(word in a_word for a_word in answer_lower.split()):
+                            score += 1
+            
+            # Normalize score (0-1 range)
+            if score > 0:
+                if score >= 100:  # Exact match
+                    distance = 0.0
+                else:
+                    normalized_score = min(1.0, score / max(1, len(query_words) * 3))
+                    distance = 1.0 - normalized_score
+                
+                faq_text = f"Q: {faq.question}\nA: {faq.answer}"
+                faq_results.append((
+                    faq_text, 
+                    distance, 
+                    {"source": "faq", "faq_id": faq.id, "question": faq.question}
+                ))
+        
+        # Sort by distance (lower is better) and return top results
+        faq_results.sort(key=lambda x: x[1])
+        return faq_results[:3]  # Return top 3 FAQ matches
+
     def search_knowledge_base(self, query: str, top_k: int = 3) -> List[Tuple[str, float, dict]]:
         """Search the knowledge base for relevant information."""
         if not self.should_use_knowledge_base(query):
@@ -251,7 +309,7 @@ class RAGService:
         
         return search_results
     
-    def generate_rag_response(self, query: str, system_prompt: str, history: list[dict] | None = None, messaging_config: dict | None = None) -> Tuple[str, bool]:
+    def generate_rag_response(self, query: str, system_prompt: str, db: Session, history: list[dict] | None = None, messaging_config: dict | None = None) -> Tuple[str, bool]:
         """
         Generate a response based on messaging configuration. Use KB when relevant; otherwise regular chat.
         Returns (response, used_kb)
@@ -283,30 +341,23 @@ class RAGService:
 
         q = contextualize_query(query, history)
 
-        # If KB not needed, answer based on messaging config
-        if not self.should_use_knowledge_base(q):
-            # Apply response length settings
-            length_instruction = self._get_length_instruction(messaging_config.get('response_length', 'Medium'))
-            conversational_instruction = self._get_conversational_instruction(messaging_config.get('conversational', True))
-            
-            concise_prompt = system_prompt + f"\n\n{conversational_instruction} {length_instruction} No intros."
-            messages: list[dict] = [{"role": "system", "content": concise_prompt}]
-            if history:
-                messages.extend(history)
-            messages.append({"role": "user", "content": q})
-
-            client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
-            response = client.chat.completions.create(
-                model=messaging_config.get('ai_model', settings.OPENAI_MODEL),
-                temperature=settings.OPENAI_TEMPERATURE,
-                max_tokens=self._get_max_tokens(messaging_config.get('response_length', 'Medium')),
-                messages=messages,
-            )
-            return response.choices[0].message.content, False
-
-        # KB search
-        kb_results = self.search_knowledge_base(q)
-        if not kb_results:
+        # Always search FAQs first - they should be the primary source for all questions
+        faq_results = self.search_faqs(db, q)
+        
+        # If we have good FAQ results, use them
+        if faq_results and faq_results[0][1] < 0.5:  # Good FAQ match (distance < 0.5)
+            all_results = faq_results
+        else:
+            # If no good FAQ matches, check if we should use knowledge base
+            if self.should_use_knowledge_base(q):
+                kb_results = self.search_knowledge_base(q)
+                all_results = faq_results + kb_results
+                all_results.sort(key=lambda x: x[1])  # Sort by distance (lower is better)
+            else:
+                # No good FAQ matches and KB not needed, use regular chat
+                all_results = []
+        
+        if not all_results:
             # Apply response length settings
             length_instruction = self._get_length_instruction(messaging_config.get('response_length', 'Medium'))
             conversational_instruction = self._get_conversational_instruction(messaging_config.get('conversational', True))
@@ -328,9 +379,12 @@ class RAGService:
 
         # Build KB context
         context_parts: list[str] = []
-        for doc_text, score, metadata in kb_results:
+        for doc_text, score, metadata in all_results:
             if score < 0.7:
-                context_parts.append(f"From {metadata['filename']}: {doc_text}")
+                if metadata.get('source') == 'faq':
+                    context_parts.append(f"FAQ: {doc_text}")
+                else:
+                    context_parts.append(f"From {metadata.get('filename', 'document')}: {doc_text}")
 
         if not context_parts:
             # Apply response length settings

@@ -168,7 +168,7 @@ def _get_or_create_client_session(db: Session, client_id: str, name: str | None 
         if email and not user.email:
             user.email = email
             updated = True
-        if ip_address and not user.ip_address:
+        if ip_address:
             user.ip_address = ip_address
             updated = True
         if updated:
@@ -361,7 +361,7 @@ async def chat(chat_data: ChatIn, x_client_id: str | None = Header(default=None)
 
         # Generate response with token-budgeted history and messaging config
         reply, used_kb = rag_service.generate_rag_response(
-            chat_data.message, system_prompt, history=history, messaging_config=messaging_config
+            chat_data.message, system_prompt, db, history=history, messaging_config=messaging_config
         )
 
         # Persist assistant reply
@@ -824,7 +824,7 @@ async def submit_dynamic_form(payload: dict, x_client_id: str | None = Header(de
                     user.name = name_val
                 if email_val and not user.email:
                     user.email = email_val
-                if ip_address and not user.ip_address:
+                if ip_address:
                     user.ip_address = ip_address
                 user.last_activity = func.now()
                 db.add(user)
@@ -858,8 +858,8 @@ async def submit_dynamic_form(payload: dict, x_client_id: str | None = Header(de
         db.commit()
         return {"saved": True, "data": normalized}
     except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Error saving form: {str(e)}")
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Error saving form: {str(e)}") 
 
 # Chat/message aliases under /api for embedders that prefix paths
 @app.post("/api/chat", response_model=ChatResponseOut)
