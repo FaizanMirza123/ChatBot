@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #ffffff;
+  --muted: #f5f6f8;
+  --text: #0f172a;
+  --subtle: #6b7280;
+}
+
+html, body, #__next { height: 100%; }
+body { background: var(--bg); color: var(--text); }
+
+/* mimic the exact feel */
+.shadow-card { box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
+
+/* form look */
+.input { @apply w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-[14px] outline-none focus:ring-2 focus:ring-primary-500; }
+.label { @apply text-[13px] font-medium text-gray-700; }
+.btn { @apply inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold; }
+.btn-primary { @apply bg-primary-500 text-white hover:opacity-95; }
+.btn-ghost { @apply bg-white border border-gray-200 hover:bg-gray-50; }
+
+/* sidebar */
+.sidebar-link { @apply flex items-center gap-3 rounded-lg px-3 py-2 text-[14px] text-gray-300 hover:bg-white/10 hover:text-white; }
+.sidebar-link.active { @apply bg-white/10 text-white; }
+/* sub items under Training */
+.sidebar-subitem { @apply text-[13px] text-gray-300 rounded-lg px-3 py-2 hover:bg-white/10 hover:text-white; }
+.sidebar-subitem.active { @apply bg-white/10 text-white; }

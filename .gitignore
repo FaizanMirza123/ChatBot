@@ -2,4 +2,5 @@
 chatbot/
 .cache/
 app/__pycache__/
-frontend/
+frontend/.next/
+frontend/node_modules/
