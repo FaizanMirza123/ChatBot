@@ -12,12 +12,12 @@ export default function TestWidget() {
   useEffect(() => {
     // Load the chatbot widget script
     const script = document.createElement('script');
-    script.src = 'https://chatbot.dipietroassociates.com/api/static/chatbot-widget.v2.js';
-    script.setAttribute('data-api-base', 'https://chatbot.dipietroassociates.com/api/');
+    script.src = 'http://localhost:8000/static/chatbot-widget.v2.js';
+    script.setAttribute('data-api-base', 'http://localhost:8000/');
     script.defer = true;
     script.onload = () => {
       if (window.createChatbotWidget) {
-        window.createChatbotWidget({ apiBase: 'https://chatbot.dipietroassociates.com/api/' });
+        window.createChatbotWidget({ apiBase: 'http://localhost:8000/' });
       }
     };
     document.head.appendChild(script);
@@ -48,10 +48,10 @@ export default function TestWidget() {
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-6">
               <h3 className="font-semibold text-blue-800 mb-2">Integration Code Used:</h3>
               <pre className="text-sm text-blue-700 bg-blue-100 p-3 rounded overflow-x-auto">
-{`<script src="https://chatbot.dipietroassociates.com/api/static/chatbot-widget.v2.js" 
-        data-api-base="https://chatbot.dipietroassociates.com/api/" 
+{`<script src="http://localhost:8000/static/chatbot-widget.v2.js" 
+        data-api-base="http://localhost:8000/" 
         defer 
-        onload="window.createChatbotWidget({ apiBase: 'https://chatbot.dipietroassociates.com/api/' });">
+        onload="window.createChatbotWidget({ apiBase: 'http://localhost:8000/' });">
 </script>`}
               </pre>
             </div>
