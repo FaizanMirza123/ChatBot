@@ -73,7 +73,7 @@ async def widget_iframe():
 </head>
 <body>
     <div id="chatbot-widget"></div>
-    <script src="/static/chatbot-widget.v2.js" data-api-base="/" defer onload="window.createChatbotWidget({ apiBase: '/' });"></script>
+    <script src="/static/chatbot-widget.v2.js" data-api-base="/api/" defer onload="window.createChatbotWidget({ apiBase: '/api/' });"></script>
 </body>
 </html>
     """)
