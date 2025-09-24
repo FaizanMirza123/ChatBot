@@ -104,8 +104,8 @@ class WidgetConfigOut(BaseModel):
     starter_questions: Optional[bool] = None
 
 class WidgetConfigIn(BaseModel):
-    form_enabled: bool
-    fields: List[FormField] = []
+    form_enabled: Optional[bool] = None
+    fields: Optional[List[FormField]] = None
     primary_color: Optional[str] = None
     avatar_url: Optional[str] = None
     bot_name: Optional[str] = None
