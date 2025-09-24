@@ -72,8 +72,17 @@ async def widget_iframe():
     </style>
 </head>
 <body>
-    <div id="chatbot-widget"></div>
-    <script src="/static/chatbot-widget.v2.js" data-api-base="/api/" defer onload="window.createChatbotWidget({ apiBase: '/api/' });"></script>
+    <div id="chatbot-widget-root"></div>
+    <script src="/api/static/chatbot-widget.v2.js" data-api-base="/api/"></script>
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        if (window.createChatbotWidget) {
+          window.createChatbotWidget({ apiBase: '/api/' });
+        } else {
+          console.error('Chatbot widget script not loaded');
+        }
+      });
+    </script>
 </body>
 </html>
     """)
