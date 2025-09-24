@@ -21,6 +21,10 @@ export default function Page() {
   const [systemPromptSaving, setSystemPromptSaving] = useState(false);
   const [systemPromptError, setSystemPromptError] = useState<string | null>(null);
   const [systemPromptSuccess, setSystemPromptSuccess] = useState<string | null>(null);
+  
+  // Global loading state for initial data load
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [dataLoaded, setDataLoaded] = useState(false);
   const [appearanceRef, setAppearanceRef] = useState<{saveWidgetConfig: () => void, discardChanges: () => void, hasUnsavedChanges: boolean} | null>(null);
   const [messagingRef, setMessagingRef] = useState<{saveMessagingConfig: () => void, discardChanges: () => void, hasUnsavedChanges: boolean} | null>(null);
   const [starterRef, setStarterRef] = useState<{saveStarterQuestions: () => void, discardChanges: () => void, hasUnsavedChanges: boolean} | null>(null);
@@ -73,17 +77,16 @@ export default function Page() {
   const [userFormIsSaving, setUserFormIsSaving] = useState<boolean>(false);
   const [userFormStatus, setUserFormStatus] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   
-  // Track if data has been loaded to prevent overwriting on page reload
-  const [dataLoaded, setDataLoaded] = useState(false);
-  
   // Load all configs on mount
   useEffect(() => {
     if (dataLoaded) return; // Don't reload if data is already loaded
     
     const loadAllConfigs = async () => {
       try {
+        setInitialLoading(true);
         setGeneralIsLoading(true);
         setUserFormIsLoading(true);
+        setSystemPromptLoading(true);
         
         const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
         const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY || '';
@@ -146,8 +149,10 @@ export default function Page() {
         }
         
       } finally {
+        setInitialLoading(false);
         setGeneralIsLoading(false);
         setUserFormIsLoading(false);
+        setSystemPromptLoading(false);
         setDataLoaded(true); // Mark data as loaded
       }
     };
@@ -230,6 +235,19 @@ export default function Page() {
       setSystemPromptSaving(false);
     }
   };
+  
+  // Global loading screen
+  if (initialLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Loading ChatBot Admin</h2>
+          <p className="text-gray-600">Please wait while we load your configuration...</p>
+        </div>
+      </div>
+    );
+  }
   
   return (
     <div className="min-h-screen md:grid md:grid-cols-[240px_1fr] block">
