@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JavaScript Preview - ChatBot Widget</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f9fafb;
+        }
+        .preview-header {
+            background: white;
+            border-bottom: 1px solid #e5e7eb;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        .preview-header h1 {
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #111827;
+        }
+        .preview-header p {
+            margin: 0.5rem 0 0 0;
+            font-size: 0.875rem;
+            color: #6b7280;
+        }
+        #chatbot-widget-root {
+            position: relative;
+            min-height: 400px;
+        }
+    </style>
+</head>
+<body>
+    <div class="preview-header">
+        <h1>JavaScript Preview</h1>
+        <p>This is how your chatbot will appear when embedded using the JavaScript method.</p>
+    </div>
+    
+    <div id="chatbot-widget-root"></div>
+    
+    <script src="/api/static/chatbot-widget.v2.js" data-api-base="/api/"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.createChatbotWidget) {
+                window.createChatbotWidget({ apiBase: '/api/' });
+            } else {
+                console.error('Chatbot widget script not loaded');
+            }
+        });
+    </script>
+</body>
+</html>
