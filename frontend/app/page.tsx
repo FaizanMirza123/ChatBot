@@ -2508,7 +2508,7 @@ function ConnectView({
           <div className="p-4">
             <div className="grid md:grid-cols-2 gap-4">
               <a
-                href={`${API_BASE}/widget-iframe`}
+                href="/preview/iframe"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="group bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg p-4 hover:from-green-600 hover:to-green-700 transition-all duration-200 shadow-sm hover:shadow-md"
@@ -2533,7 +2533,7 @@ function ConnectView({
               </a>
 
               <a
-                href="/test-widget"
+                href="/preview/javascript"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="group bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg p-4 hover:from-blue-600 hover:to-blue-700 transition-all duration-200 shadow-sm hover:shadow-md"
