@@ -824,10 +824,7 @@ const SettingsAppearance = forwardRef<{saveWidgetConfig: () => void, discardChan
           ...(ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {})
         },
         body: JSON.stringify({
-          form_enabled: true,
-          fields: [],
           primary_color: color,
-          bot_name: "ChatBot", // Include bot_name as it's required
           widget_icon: widgetIcon,
           widget_position: position,
           input_placeholder: inputPlaceholder,

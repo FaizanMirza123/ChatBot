@@ -523,7 +523,11 @@ async def get_widget_config(db: Session = Depends(get_db)):
 @app.post("/widget-config", response_model=WidgetConfigOut)
 async def update_widget_config(data: WidgetConfigIn, db: Session = Depends(get_db), _: bool = Depends(require_admin)):
     cfg = _get_or_create_widget_config(db)
-    cfg.form_enabled = data.form_enabled
+    
+    # Only update form_enabled if provided
+    if data.form_enabled is not None:
+        cfg.form_enabled = data.form_enabled
+    
     # basic color validation: allow hex like #RRGGBB/#RGB or color names
     if data.primary_color:
         color = data.primary_color.strip()
@@ -551,9 +555,11 @@ async def update_widget_config(data: WidgetConfigIn, db: Session = Depends(get_d
         cfg.open_by_default = data.open_by_default
     if data.starter_questions is not None:
         cfg.starter_questions = data.starter_questions
-    # store fields in deterministic order
-    sorted_fields = sorted([f.dict() for f in data.fields], key=lambda x: (x.get('order',0), x.get('name','')))
-    cfg.form_fields = sorted_fields
+    
+    # Only update form_fields if provided and not empty
+    if data.fields is not None and len(data.fields) > 0:
+        sorted_fields = sorted([f.dict() for f in data.fields], key=lambda x: (x.get('order',0), x.get('name','')))
+        cfg.form_fields = sorted_fields
     db.add(cfg)
     try:
         db.commit()
