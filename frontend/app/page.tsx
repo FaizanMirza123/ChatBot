@@ -3350,42 +3350,39 @@ function Metric({label, value}:{label:string; value:string}){
 }
 
 function ChartArea({points, labels, color = '#6366f1'}:{points:number[]; labels?:string[]; color?:string}){
-  // Clean, professional area chart
+  // Clean, professional area chart - NO NEGATIVE VALUES ALLOWED
   const width = 1100;
   const height = 300;
-  const m = { t: 20, r: 40, b: 60, l: 60 }; // Professional margins
+  const m = { t: 20, r: 40, b: 60, l: 60 };
   const iw = width - m.l - m.r;
   const ih = height - m.t - m.b;
-  const maxVal = Math.max(...points, 0);
+  
+  // Force all points to be non-negative
+  const safePoints = points.map(p => Math.max(0, p));
+  const maxVal = Math.max(...safePoints, 0);
   const minVal = 0;
-  const padMax = maxVal === 0 ? 1 : maxVal * 1.05; // Minimal padding for clean look
-  const n = points.length;
+  const padMax = maxVal === 0 ? 1 : maxVal * 1.05;
+  const n = safePoints.length;
+  
   const xs = (i:number) => m.l + (i/(n-1)) * iw;
-  // Ensure ys never goes below baseline - no negative chats possible
   const ys = (v:number) => {
-    if (maxVal === 0) return m.t + ih; // All zeros = baseline
-    const normalized = Math.max(0, v); // Ensure no negative values
-    return m.t + ih - ((normalized - minVal) / (padMax - minVal)) * ih;
+    // CRITICAL: Never allow values below baseline
+    const safeValue = Math.max(0, v);
+    if (maxVal === 0 || safeValue === 0) return m.t + ih; // Zero = baseline
+    return m.t + ih - (safeValue / padMax) * ih;
   };
-  const pts = points.map((p,i)=> ({ x: xs(i), y: ys(Math.max(0, p)) })); // Force non-negative
+  
+  const pts = safePoints.map((p,i)=> ({ 
+    x: xs(i), 
+    y: ys(p) // p is already safe (non-negative)
+  }));
 
-  // Catmull-Rom to Bezier smoothing
-  const pathLine = (() => {
-    if (pts.length < 2) return '';
-    let d = `M ${pts[0].x} ${pts[0].y}`;
-    for (let i = 0; i < pts.length - 1; i++) {
-      const p0 = pts[i-1] || pts[i];
-      const p1 = pts[i];
-      const p2 = pts[i+1];
-      const p3 = pts[i+2] || p2;
-      const cp1x = p1.x + (p2.x - p0.x) / 6;
-      const cp1y = p1.y + (p2.y - p0.y) / 6;
-      const cp2x = p2.x - (p3.x - p1.x) / 6;
-      const cp2y = p2.y - (p3.y - p1.y) / 6;
-      d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
-    }
-    return d;
-  })();
+  // Simple line path - no fancy smoothing that can cause issues
+  const pathLine = pts.length < 2 ? '' : 
+    `M ${pts[0].x} ${pts[0].y} ` + 
+    pts.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ');
+    
+  // Area path - guaranteed to stay above baseline
   const pathArea = pathLine + ` L ${m.l + iw} ${m.t + ih} L ${m.l} ${m.t + ih} Z`;
 
   // X labels
