@@ -1845,9 +1845,11 @@ function FilesSection(){
   const [status, setStatus] = useState<string>('');
   const [docs, setDocs] = useState<Array<{id:number; filename:string; document_type:string; upload_date:string; processed:boolean; chunk_count:number;}>>([]);
   const [visibility, setVisibility] = useState<Record<number, boolean>>({});
+  const [isLoading, setIsLoading] = useState(true);
 
   const fetchDocs = useCallback(async () => {
     try{
+      setIsLoading(true);
       const res = await fetch(`${API_BASE}/documents`, { cache:'no-store' });
       const data = await res.json();
       setDocs(data.documents || []);
@@ -1862,6 +1864,7 @@ function FilesSection(){
         }catch(_){ /* ignore */ }
       }));
     }catch(e){ setStatus('Failed to load documents'); }
+    finally{ setIsLoading(false); }
   }, [API_BASE, ADMIN_KEY]);
   
   useEffect(()=>{ fetchDocs(); }, [fetchDocs]);
@@ -1928,11 +1931,19 @@ function FilesSection(){
       <div className="rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 font-semibold">Files</div>
         <div className="border-t border-gray-200">
-          <div className="overflow-x-auto">
-            <div className="min-w-[900px] grid grid-cols-[1fr_120px_140px_140px_160px_40px] px-6 py-3 text-[13px] text-gray-500">
-              <div>Name</div><div>Type</div><div>Visibility</div><div>Status</div><div>Updated</div><div></div>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="flex items-center space-x-2 text-gray-500">
+                <div className="w-4 h-4 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin"></div>
+                <span>Loading files...</span>
+              </div>
             </div>
-            {(docs||[]).map(d=> (
+          ) : (
+            <div className="overflow-x-auto">
+              <div className="min-w-[900px] grid grid-cols-[1fr_120px_140px_140px_160px_40px] px-6 py-3 text-[13px] text-gray-500">
+                <div>Name</div><div>Type</div><div>Visibility</div><div>Status</div><div>Updated</div><div></div>
+              </div>
+              {(docs||[]).map(d=> (
               <div key={d.id} className="min-w-[900px] border-t border-gray-100 px-6 py-3 grid grid-cols-[1fr_120px_140px_140px_160px_40px] items-center text-[14px]">
                 <div className="truncate" title={d.filename}>{d.filename}</div>
                 <div className="text-gray-500 uppercase">{d.document_type}</div>
@@ -1958,11 +1969,12 @@ function FilesSection(){
                   </button>
                 </div>
               </div>
-            ))}
-            {(!docs || docs.length===0) && (
-              <div className="px-6 py-4 text-[14px] text-gray-500">No documents uploaded yet.</div>
-            )}
-          </div>
+              ))}
+              {(!docs || docs.length===0) && (
+                <div className="px-6 py-4 text-[14px] text-gray-500">No documents uploaded yet.</div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1976,8 +1988,16 @@ function FaqsSection(){
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
   const [faqs, setFaqs] = useState<Array<{id:number; question:string; answer:string}>>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  
   const loadFaqs = useCallback(async () => {
-    try{ const r = await fetch(`${API_BASE}/faqs`, { cache:'no-store' }); const d = await r.json(); setFaqs(d.faqs||[]); }catch(_){ setStatus('Failed to load FAQs'); }
+    try{ 
+      setIsLoading(true);
+      const r = await fetch(`${API_BASE}/faqs`, { cache:'no-store' }); 
+      const d = await r.json(); 
+      setFaqs(d.faqs||[]); 
+    }catch(_){ setStatus('Failed to load FAQs'); }
+    finally{ setIsLoading(false); }
   }, [API_BASE, ADMIN_KEY]);
   
   useEffect(()=>{ loadFaqs(); }, [loadFaqs]);
@@ -2040,7 +2060,14 @@ function FaqsSection(){
       <div className="rounded-xl border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 font-semibold">Added FAQs</div>
         <div className="border-t border-gray-200">
-          {(faqs||[]).length===0 ? (
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="flex items-center space-x-2 text-gray-500">
+                <div className="w-4 h-4 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin"></div>
+                <span>Loading FAQs...</span>
+              </div>
+            </div>
+          ) : (faqs||[]).length===0 ? (
             <div className="px-6 py-4 text-[14px] text-gray-500">No FAQs yet.</div>
           ) : (
             <div className="divide-y divide-gray-100">
