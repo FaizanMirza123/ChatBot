@@ -2005,10 +2005,14 @@ async def get_analytics_summary(db: Session = Depends(get_db), _: bool = Depends
     try:
         from datetime import datetime, timedelta
         
-        # Total counts - use more explicit queries
-        total_users = db.query(User).count()
-        total_sessions = db.query(ChatSession).count()
-        total_messages = db.query(Message).count()
+        # Total counts - use more explicit queries with error handling
+        try:
+            total_users = db.query(User).count()
+            total_sessions = db.query(ChatSession).count()
+            total_messages = db.query(Message).count()
+        except Exception as e:
+            print(f"Error getting total counts: {e}")
+            total_users = total_sessions = total_messages = 0
         
         # Debug: Check what's actually in the database
         print(f"DEBUG Database counts:")
@@ -2017,31 +2021,40 @@ async def get_analytics_summary(db: Session = Depends(get_db), _: bool = Depends
         print(f"  Messages in DB: {total_messages}")
         
         # Get some sample data to debug
-        if total_users > 0:
-            sample_user = db.query(User).first()
-            print(f"  Sample user: {sample_user.id}, last_activity: {sample_user.last_activity}")
-        
-        if total_sessions > 0:
-            sample_session = db.query(ChatSession).first()
-            print(f"  Sample session: {sample_session.id}, created_at: {sample_session.created_at}")
+        try:
+            if total_users > 0:
+                sample_user = db.query(User).first()
+                print(f"  Sample user: {sample_user.id}, last_activity: {sample_user.last_activity}")
             
-        if total_messages > 0:
-            sample_message = db.query(Message).first()
-            print(f"  Sample message: {sample_message.id}, created_at: {sample_message.created_at}, role: {sample_message.role}")
+            if total_sessions > 0:
+                sample_session = db.query(ChatSession).first()
+                print(f"  Sample session: {sample_session.id}, created_at: {sample_session.created_at}")
+                
+            if total_messages > 0:
+                sample_message = db.query(Message).first()
+                print(f"  Sample message: {sample_message.id}, created_at: {sample_message.created_at}, role: {sample_message.role}")
+        except Exception as e:
+            print(f"Error getting sample data: {e}")
         
         # Active users (last 7 days) - use UTC for consistency
         week_ago = datetime.utcnow() - timedelta(days=7)
-        active_users = db.query(User).filter(User.last_activity >= week_ago).count()
-        
-        # Messages in last 7 days
-        messages_last_week = db.query(Message).filter(Message.created_at >= week_ago).count()
-        
-        # Sessions in last 7 days
-        sessions_last_week = db.query(ChatSession).filter(ChatSession.created_at >= week_ago).count()
+        try:
+            active_users = db.query(User).filter(User.last_activity >= week_ago).count()
+            messages_last_week = db.query(Message).filter(Message.created_at >= week_ago).count()
+            sessions_last_week = db.query(ChatSession).filter(ChatSession.created_at >= week_ago).count()
+        except Exception as e:
+            print(f"Error getting 7-day data: {e}")
+            active_users = messages_last_week = sessions_last_week = 0
         
         # Resolution rate (sessions with at least one assistant message)
-        sessions_with_replies = db.query(ChatSession).join(Message).filter(Message.role == "assistant").distinct().count()
-        resolution_rate = (sessions_with_replies / total_sessions * 100) if total_sessions > 0 else 0
+        # Use a subquery to avoid JSON field issues with DISTINCT
+        try:
+            sessions_with_replies = db.query(ChatSession.id).join(Message).filter(Message.role == "assistant").distinct().count()
+            resolution_rate = (sessions_with_replies / total_sessions * 100) if total_sessions > 0 else 0
+        except Exception as e:
+            print(f"Warning: Could not calculate resolution rate: {e}")
+            sessions_with_replies = 0
+            resolution_rate = 0
         
         # Debug logging
         print(f"DEBUG Analytics Summary:")
