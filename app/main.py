@@ -23,14 +23,8 @@ from io import StringIO
 app = FastAPI()
 client = OpenAI(api_key=settings.OPENAI_API_KEY)
 rag_service = RAGService()
-# Create DB tables on startup if they don't exist (safe for SQLite/dev)
-@app.on_event("startup")
-def _startup_init_db():
-    try:
-        Base.metadata.create_all(bind=engine)
-    except Exception:
-        # Avoid crashing if DB user lacks DDL permissions in prod
-        pass
+# Database initialization is handled by init_database.py in Dockerfile
+# No need to recreate tables here as they're already created during container startup
 
 # CORS: allow configured origins; if none provided, allow all (no credentials)
 origins = settings.cors_origins_parsed or ["*"]

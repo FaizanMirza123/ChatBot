@@ -16,6 +16,39 @@ def init_database():
     # Ensure the database directory exists
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     
+    # Check if database file exists and has data
+    if os.path.exists(db_path) and os.path.getsize(db_path) > 0:
+        print(f"📁 Database file exists at {db_path}, checking for existing data...")
+        
+        # Connect and check if it has meaningful data
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        try:
+            # Check if any important tables have data
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('widget_config', 'messaging_config', 'prompts', 'faqs')")
+            existing_tables = [row[0] for row in cursor.fetchall()]
+            
+            if existing_tables:
+                print(f"✅ Found existing tables: {existing_tables}")
+                # Check if any of these tables have data
+                for table in existing_tables:
+                    cursor.execute(f"SELECT COUNT(*) FROM {table}")
+                    count = cursor.fetchone()[0]
+                    if count > 0:
+                        print(f"✅ Table {table} has {count} records - preserving existing data")
+                        conn.close()
+                        return True
+                
+                print("📝 Tables exist but are empty, will initialize with defaults")
+            else:
+                print("📝 No important tables found, will create them")
+        except Exception as e:
+            print(f"⚠️ Error checking existing database: {e}")
+            print("📝 Will proceed with initialization")
+        finally:
+            conn.close()
+    
     # Connect to the database
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -37,6 +70,24 @@ def init_database():
         cursor.execute("SELECT version FROM migration_history WHERE migration = 'full_init'")
         if cursor.fetchone():
             print("✅ Database already initialized, skipping...")
+            return True
+        
+        # Additional check: if any config tables have data, don't reset them
+        cursor.execute("SELECT COUNT(*) FROM widget_config")
+        widget_count = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM messaging_config") 
+        messaging_count = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM prompts")
+        prompts_count = cursor.fetchone()[0]
+        
+        if widget_count > 0 or messaging_count > 0 or prompts_count > 0:
+            print("✅ Database contains existing data, skipping initialization to preserve data...")
+            # Still record the migration as completed
+            cursor.execute("""
+                INSERT OR REPLACE INTO migration_history (migration, version) 
+                VALUES ('full_init', '1.0')
+            """)
+            conn.commit()
             return True
         
         # Create all tables using SQLAlchemy-compatible SQL
