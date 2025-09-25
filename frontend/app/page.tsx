@@ -46,8 +46,8 @@ export default function Page() {
   const [searchTerm, setSearchTerm] = useState('');
   
   // Settings General state
-  const [botName, setBotName] = useState<string>('');
-  const [originalBotName, setOriginalBotName] = useState<string>('');
+  const [botName, setBotName] = useState<string>('ChatBot');
+  const [originalBotName, setOriginalBotName] = useState<string>('ChatBot');
   const [generalIsLoading, setGeneralIsLoading] = useState<boolean>(true);
   const [generalIsSaving, setGeneralIsSaving] = useState<boolean>(false);
   const [generalStatus, setGeneralStatus] = useState<{message: string, type: 'success' | 'error'} | null>(null);
@@ -98,8 +98,8 @@ export default function Page() {
           });
           if (botResponse.ok) {
             const botData = await botResponse.json();
-            setBotName(botData.bot_name || '');
-            setOriginalBotName(botData.bot_name || '');
+            setBotName(botData.bot_name || 'ChatBot');
+            setOriginalBotName(botData.bot_name || 'ChatBot');
           }
         } catch (error) {
           console.error('Failed to load bot config:', error);

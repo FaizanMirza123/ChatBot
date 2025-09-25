@@ -85,8 +85,8 @@ async def widget_iframe():
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
-# No default system prompt - user must set their own
-DEFAULT_SYSTEM_PROMPT = ""
+# Basic system prompt - user can customize
+DEFAULT_SYSTEM_PROMPT = "You are a helpful AI assistant. Answer questions clearly and concisely."
 
 
 in_memory_system_prompt = DEFAULT_SYSTEM_PROMPT
@@ -445,20 +445,20 @@ async def save_lead_api(lead_in: LeadIn, x_client_id: str | None = Header(defaul
 def _get_or_create_widget_config(db: Session) -> WidgetConfig:
     cfg = db.query(WidgetConfig).first()
     if not cfg:
-        # Create empty config - no dummy data
+        # Create minimal working config - user can customize
         cfg = WidgetConfig(
             form_enabled=False,
-            primary_color=None,
+            primary_color="#3b82f6",  # Basic blue
             avatar_url=None,
-            bot_name=None,
-            widget_icon=None,
-            widget_position=None,
-            input_placeholder=None,
-            subheading=None,
-            show_branding=None,
-            open_by_default=None,
-            starter_questions=None,
-            form_fields=None
+            bot_name="",  # Empty - user must set
+            widget_icon="💬",  # Basic icon
+            widget_position="right",
+            input_placeholder="Type your message...",
+            subheading="",  # Empty - user must set
+            show_branding=True,
+            open_by_default=False,
+            starter_questions=False,
+            form_fields=[]  # Empty array
         )
         db.add(cfg)
         db.commit()
@@ -602,21 +602,21 @@ async def update_bot_config(data: BotConfigIn, db: Session = Depends(get_db), _:
 def _get_or_create_messaging_config(db: Session) -> MessagingConfig:
     cfg = db.query(MessagingConfig).first()
     if not cfg:
-        # Create empty config - no dummy data
+        # Create minimal working config - user can customize
         cfg = MessagingConfig(
-            ai_model=None,
-            conversational=None,
-            strict_faq=None,
-            response_length=None,
-            suggest_followups=None,
-            allow_images=None,
-            show_sources=None,
-            post_feedback=None,
-            multilingual=None,
-            show_welcome=None,
-            welcome_message=None,
-            no_source_message=None,
-            server_error_message=None
+            ai_model="gpt-4o",
+            conversational=True,
+            strict_faq=True,
+            response_length="Medium",
+            suggest_followups=False,
+            allow_images=False,
+            show_sources=True,
+            post_feedback=True,
+            multilingual=True,
+            show_welcome=True,
+            welcome_message="Hey there, how can I help you?",
+            no_source_message="I don't have information about that. Please contact our team for assistance.",
+            server_error_message="Sorry, there seems to be a technical issue. Please try again."
         )
         db.add(cfg)
         db.commit()
@@ -627,7 +627,7 @@ def _get_or_create_starter_questions(db: Session) -> StarterQuestions:
     """Get or create starter questions configuration (single row table)"""
     cfg = db.query(StarterQuestions).first()
     if not cfg:
-        # Create empty config - no dummy data
+        # Create minimal working config - user can customize
         cfg = StarterQuestions(
             questions=[],
             enabled=False
@@ -1678,6 +1678,34 @@ async def get_chat_interface():
 @app.get("/api")
 async def root():
     return {"message": "ChatBot API is running"}
+
+@app.get("/debug/db-status")
+async def debug_db_status(db: Session = Depends(get_db)):
+    """Debug endpoint to check database status"""
+    try:
+        # Check if database has data
+        widget_count = db.query(WidgetConfig).count()
+        messaging_count = db.query(MessagingConfig).count()
+        prompt_count = db.query(Prompt).count()
+        
+        # Get current config values
+        widget_config = db.query(WidgetConfig).first()
+        messaging_config = db.query(MessagingConfig).first()
+        
+        return {
+            "database_connected": True,
+            "widget_config_count": widget_count,
+            "messaging_config_count": messaging_count,
+            "prompt_count": prompt_count,
+            "current_bot_name": widget_config.bot_name if widget_config else None,
+            "current_ai_model": messaging_config.ai_model if messaging_config else None,
+            "database_file_exists": True
+        }
+    except Exception as e:
+        return {
+            "database_connected": False,
+            "error": str(e)
+        }
 
 @app.get("/health")
 async def health():

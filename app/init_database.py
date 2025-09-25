@@ -16,6 +16,13 @@ def init_database():
     # Ensure the database directory exists
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     
+    # CRITICAL: Check if we're using the mounted database file
+    print(f"🔍 Database path: {db_path}")
+    print(f"🔍 Database file exists: {os.path.exists(db_path)}")
+    if os.path.exists(db_path):
+        print(f"🔍 Database file size: {os.path.getsize(db_path)} bytes")
+        print(f"🔍 Database file permissions: {oct(os.stat(db_path).st_mode)}")
+    
     # Check if database file exists and has data
     if os.path.exists(db_path) and os.path.getsize(db_path) > 0:
         print(f"📁 Database file exists at {db_path}, checking for existing data...")
@@ -73,22 +80,57 @@ def init_database():
             return True
         
         # Additional check: if any config tables have data, don't reset them
-        cursor.execute("SELECT COUNT(*) FROM widget_config")
-        widget_count = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(*) FROM messaging_config") 
-        messaging_count = cursor.fetchone()[0]
-        cursor.execute("SELECT COUNT(*) FROM prompts")
-        prompts_count = cursor.fetchone()[0]
+        try:
+            cursor.execute("SELECT COUNT(*) FROM widget_config")
+            widget_count = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM messaging_config") 
+            messaging_count = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM prompts")
+            prompts_count = cursor.fetchone()[0]
+            
+            if widget_count > 0 or messaging_count > 0 or prompts_count > 0:
+                print("✅ Database contains existing data, skipping initialization to preserve data...")
+                # Still record the migration as completed
+                cursor.execute("""
+                    INSERT OR REPLACE INTO migration_history (migration, version) 
+                    VALUES ('full_init', '1.0')
+                """)
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f"⚠️ Error checking existing data: {e}")
+            print("📝 Will proceed with table creation")
         
-        if widget_count > 0 or messaging_count > 0 or prompts_count > 0:
-            print("✅ Database contains existing data, skipping initialization to preserve data...")
-            # Still record the migration as completed
+        # CRITICAL: Check if database file has meaningful data before proceeding
+        # This prevents overwriting user data
+        try:
+            # Check if any important tables exist and have data
             cursor.execute("""
-                INSERT OR REPLACE INTO migration_history (migration, version) 
-                VALUES ('full_init', '1.0')
+                SELECT name FROM sqlite_master 
+                WHERE type='table' AND name IN ('widget_config', 'messaging_config', 'prompts', 'faqs', 'users')
             """)
-            conn.commit()
-            return True
+            existing_tables = [row[0] for row in cursor.fetchall()]
+            
+            if existing_tables:
+                print(f"✅ Found existing tables: {existing_tables}")
+                # Check if any table has data
+                for table in existing_tables:
+                    cursor.execute(f"SELECT COUNT(*) FROM {table}")
+                    count = cursor.fetchone()[0]
+                    if count > 0:
+                        print(f"✅ Table {table} has {count} records - preserving existing data")
+                        # Record migration as completed without doing anything
+                        cursor.execute("""
+                            INSERT OR REPLACE INTO migration_history (migration, version) 
+                            VALUES ('full_init', '1.0')
+                        """)
+                        conn.commit()
+                        return True
+                
+                print("📝 Tables exist but are empty, will create minimal configs")
+        except Exception as e:
+            print(f"⚠️ Error checking table data: {e}")
+            print("📝 Will proceed with table creation")
         
         # Create all tables using SQLAlchemy-compatible SQL
         tables = [
@@ -248,10 +290,9 @@ def init_database():
         for table_sql in tables:
             cursor.execute(table_sql)
         
-        # NO DUMMY DATA - Only create empty tables
-        # All configuration will come from user input via the admin panel
-        print("✅ Database tables created - no dummy data inserted")
-        print("📝 All configuration will be set by user through admin panel")
+        # Tables created - backend will create minimal configs when needed
+        print("✅ Database tables created")
+        print("📝 Backend will create minimal configs when first accessed")
         
         # Record this initialization as completed
         cursor.execute("""
@@ -261,6 +302,8 @@ def init_database():
         
         conn.commit()
         print("✅ Database initialization completed successfully!")
+        print(f"🔍 Final database file size: {os.path.getsize(db_path)} bytes")
+        print(f"🔍 Database file location: {os.path.abspath(db_path)}")
         return True
         
     except Exception as e:
