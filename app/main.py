@@ -2024,6 +2024,16 @@ async def get_analytics_summary(db: Session = Depends(get_db), _: bool = Depends
         sessions_with_replies = db.query(ChatSession).join(Message).filter(Message.role == "assistant").distinct().count()
         resolution_rate = (sessions_with_replies / total_sessions * 100) if total_sessions > 0 else 0
         
+        # Debug logging
+        print(f"DEBUG Analytics Summary:")
+        print(f"  Total users: {total_users}")
+        print(f"  Total sessions: {total_sessions}")
+        print(f"  Total messages: {total_messages}")
+        print(f"  Active users (7d): {active_users}")
+        print(f"  Messages (7d): {messages_last_week}")
+        print(f"  Sessions (7d): {sessions_last_week}")
+        print(f"  Resolution rate: {resolution_rate}%")
+        
         return {
             "total_users": total_users,
             "total_sessions": total_sessions,
@@ -2034,6 +2044,7 @@ async def get_analytics_summary(db: Session = Depends(get_db), _: bool = Depends
             "resolution_rate": round(resolution_rate, 1)
         }
     except Exception as e:
+        print(f"Analytics summary error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error fetching analytics summary: {str(e)}")
 
 @app.get("/api/analytics/chart-data")

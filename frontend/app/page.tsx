@@ -3180,7 +3180,10 @@ function AnalyticsView(){
         const summaryResponse = await fetch(`${API_BASE}/api/analytics/summary`, { headers });
         if (summaryResponse.ok) {
           const summaryData = await summaryResponse.json();
+          console.log('Analytics Summary Data:', summaryData);
           setSummary(summaryData);
+        } else {
+          console.error('Failed to fetch analytics summary:', summaryResponse.status, summaryResponse.statusText);
         }
         
         // Load chart data
@@ -3188,7 +3191,10 @@ function AnalyticsView(){
         const chartResponse = await fetch(`${API_BASE}/api/analytics/chart-data?days=${days}`, { headers });
         if (chartResponse.ok) {
           const chartData = await chartResponse.json();
+          console.log('Analytics Chart Data:', chartData);
           setChartData(chartData);
+        } else {
+          console.error('Failed to fetch analytics chart data:', chartResponse.status, chartResponse.statusText);
         }
       } catch (error) {
         console.error('Failed to load analytics data:', error);
@@ -3299,6 +3305,13 @@ function AnalyticsView(){
             value={`${summary?.resolution_rate || 0}%`} 
           />
         </div>
+        
+        {/* Debug info - remove this after fixing */}
+        {summary && (
+          <div className="px-6 py-2 text-xs text-gray-500 bg-gray-50">
+            Debug: {JSON.stringify(summary)}
+          </div>
+        )}
         <div className="mt-4 px-6 pb-6">
           {chartData ? (
             <ChartArea 
@@ -3346,15 +3359,19 @@ function ChartArea({points, labels, color = '#7c3aed'}:{points:number[]; labels?
   // Premium SVG area chart with smoothing, gradient, shadow, and markers
   const width = 1100;
   const height = 300;
-  const m = { t: 16, r: 16, b: 40, l: 36 }; // Increased bottom margin for better label spacing
+  const m = { t: 20, r: 20, b: 50, l: 50 }; // Better margins for visual appeal
   const iw = width - m.l - m.r;
   const ih = height - m.t - m.b;
   const maxVal = Math.max(...points, 0);
   const minVal = 0;
-  const padMax = maxVal === 0 ? 1 : maxVal * 1.1;
+  const padMax = maxVal === 0 ? 1 : maxVal * 1.15; // Slightly more padding for better visual
   const n = points.length;
   const xs = (i:number) => m.l + (i/(n-1)) * iw;
-  const ys = (v:number) => m.t + ih - ((v - minVal) / ((padMax - minVal) || 1)) * ih;
+  // Fix the ys calculation to prevent going below baseline
+  const ys = (v:number) => {
+    if (maxVal === 0) return m.t + ih; // If all values are 0, put points at baseline
+    return m.t + ih - ((v - minVal) / (padMax - minVal)) * ih;
+  };
   const pts = points.map((p,i)=> ({ x: xs(i), y: ys(p) }));
 
   // Catmull-Rom to Bezier smoothing
@@ -3385,49 +3402,77 @@ function ChartArea({points, labels, color = '#7c3aed'}:{points:number[]; labels?
     <svg width="100%" viewBox={`0 0 ${width} ${height}`} className="rounded-lg">
       <defs>
         <linearGradient id="chartFill" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.35" />
-          <stop offset="100%" stopColor={color} stopOpacity="0.06" />
+          <stop offset="0%" stopColor={color} stopOpacity="0.4" />
+          <stop offset="50%" stopColor={color} stopOpacity="0.15" />
+          <stop offset="100%" stopColor={color} stopOpacity="0.05" />
         </linearGradient>
         <linearGradient id="chartStroke" x1="0" x2="1" y1="0" y2="0">
-          <stop offset="0%" stopColor={color} stopOpacity="0.9" />
-          <stop offset="100%" stopColor={color} stopOpacity="0.9" />
+          <stop offset="0%" stopColor={color} stopOpacity="1" />
+          <stop offset="100%" stopColor={color} stopOpacity="0.8" />
         </linearGradient>
         <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow dx="0" dy="1" stdDeviation="2" floodColor={color} floodOpacity="0.18" />
+          <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor={color} floodOpacity="0.2" />
+        </filter>
+        <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+          <feMerge> 
+            <feMergeNode in="coloredBlur"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
         </filter>
       </defs>
 
-      {/* Background */}
-      <rect x="0" y="0" width={width} height={height} fill="white" />
+      {/* Background with subtle gradient */}
+      <rect x="0" y="0" width={width} height={height} fill="#fafafa" />
+      <rect x="0" y="0" width={width} height={height} fill="url(#chartFill)" opacity="0.1" />
 
-      {/* Grid lines */}
-      {Array.from({length: 4}, (_,i)=> (
-        <line key={`h${i}`} x1={m.l} x2={m.l+iw} y1={m.t + (ih/4)*(i+1)} y2={m.t + (ih/4)*(i+1)} stroke="#e9e9ef" strokeWidth="1" />
+      {/* Grid lines - more subtle */}
+      {Array.from({length: 5}, (_,i)=> (
+        <line key={`h${i}`} x1={m.l} x2={m.l+iw} y1={m.t + (ih/4)*i} y2={m.t + (ih/4)*i} stroke="#e5e7eb" strokeWidth="0.5" opacity="0.6" />
       ))}
       {Array.from({length: n}, (_,i)=> (
-        <line key={`v${i}`} x1={xs(i)} x2={xs(i)} y1={m.t} y2={m.t+ih} stroke="#f1f1f6" strokeWidth="1" />
+        <line key={`v${i}`} x1={xs(i)} x2={xs(i)} y1={m.t} y2={m.t+ih} stroke="#f3f4f6" strokeWidth="0.5" opacity="0.4" />
       ))}
 
-      {/* Baseline */}
-      <line x1={m.l} x2={m.l+iw} y1={m.t+ih} y2={m.t+ih} stroke={color} strokeOpacity="0.6" strokeWidth="2" />
+      {/* Baseline - more prominent */}
+      <line x1={m.l} x2={m.l+iw} y1={m.t+ih} y2={m.t+ih} stroke="#d1d5db" strokeWidth="1" strokeDasharray="2,2" />
 
-      {/* Area + Stroke */}
+      {/* Area + Stroke with enhanced styling */}
       <path d={pathArea} fill="url(#chartFill)" />
-      <path d={pathLine} fill="none" stroke="url(#chartStroke)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" filter="url(#shadow)" />
+      <path d={pathLine} fill="none" stroke="url(#chartStroke)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" filter="url(#glow)" />
 
-      {/* Markers */}
+      {/* Enhanced markers with hover effect */}
       {pts.map((p,i)=> (
         <g key={`pt${i}`}>
-          <circle cx={p.x} cy={p.y} r={4} fill={color} stroke="#ffffff" strokeWidth="2" />
+          <circle cx={p.x} cy={p.y} r="6" fill="white" stroke={color} strokeWidth="3" opacity="0.9" />
+          <circle cx={p.x} cy={p.y} r="3" fill={color} />
         </g>
       ))}
+
+      {/* Y-axis labels */}
+      {Array.from({length: 5}, (_,i)=> {
+        const value = Math.round((padMax / 4) * i);
+        const yPos = m.t + ih - (ih / 4) * i;
+        return (
+          <text 
+            key={`y${i}`} 
+            x={m.l - 8} 
+            y={yPos + 4} 
+            fontSize="11" 
+            fill="#6b7280" 
+            textAnchor="end"
+          >
+            {value}
+          </text>
+        );
+      })}
 
       {/* X-axis labels with better spacing */}
       {xLabels.map((d,i)=> {
         const labelSpacing = iw / (n - 1);
         const shouldRotate = labelSpacing < 60; // Rotate labels if spacing is too small
         const fontSize = shouldRotate ? "10" : "12";
-        const yPos = height - 12;
+        const yPos = height - 8;
         
         return (
           <text 
