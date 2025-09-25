@@ -2005,13 +2005,32 @@ async def get_analytics_summary(db: Session = Depends(get_db), _: bool = Depends
     try:
         from datetime import datetime, timedelta
         
-        # Total counts
+        # Total counts - use more explicit queries
         total_users = db.query(User).count()
         total_sessions = db.query(ChatSession).count()
         total_messages = db.query(Message).count()
         
-        # Active users (last 7 days)
-        week_ago = datetime.now() - timedelta(days=7)
+        # Debug: Check what's actually in the database
+        print(f"DEBUG Database counts:")
+        print(f"  Users in DB: {total_users}")
+        print(f"  Sessions in DB: {total_sessions}")
+        print(f"  Messages in DB: {total_messages}")
+        
+        # Get some sample data to debug
+        if total_users > 0:
+            sample_user = db.query(User).first()
+            print(f"  Sample user: {sample_user.id}, last_activity: {sample_user.last_activity}")
+        
+        if total_sessions > 0:
+            sample_session = db.query(ChatSession).first()
+            print(f"  Sample session: {sample_session.id}, created_at: {sample_session.created_at}")
+            
+        if total_messages > 0:
+            sample_message = db.query(Message).first()
+            print(f"  Sample message: {sample_message.id}, created_at: {sample_message.created_at}, role: {sample_message.role}")
+        
+        # Active users (last 7 days) - use UTC for consistency
+        week_ago = datetime.utcnow() - timedelta(days=7)
         active_users = db.query(User).filter(User.last_activity >= week_ago).count()
         
         # Messages in last 7 days
@@ -2033,6 +2052,7 @@ async def get_analytics_summary(db: Session = Depends(get_db), _: bool = Depends
         print(f"  Messages (7d): {messages_last_week}")
         print(f"  Sessions (7d): {sessions_last_week}")
         print(f"  Resolution rate: {resolution_rate}%")
+        print(f"  Week ago timestamp: {week_ago}")
         
         return {
             "total_users": total_users,
@@ -2045,6 +2065,8 @@ async def get_analytics_summary(db: Session = Depends(get_db), _: bool = Depends
         }
     except Exception as e:
         print(f"Analytics summary error: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error fetching analytics summary: {str(e)}")
 
 @app.get("/api/analytics/chart-data")
@@ -2054,8 +2076,8 @@ async def get_analytics_chart_data(days: int = 7, db: Session = Depends(get_db),
         from datetime import datetime, timedelta
         from sqlalchemy import func, cast, Date
         
-        # Use current date for calculations
-        end_date = datetime.now().date()
+        # Use UTC for consistency
+        end_date = datetime.utcnow().date()
         start_date = end_date - timedelta(days=days-1)
         
         # Get all messages and sessions in the date range

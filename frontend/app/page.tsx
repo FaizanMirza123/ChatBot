@@ -3306,12 +3306,6 @@ function AnalyticsView(){
           />
         </div>
         
-        {/* Debug info - remove this after fixing */}
-        {summary && (
-          <div className="px-6 py-2 text-xs text-gray-500 bg-gray-50">
-            Debug: {JSON.stringify(summary)}
-          </div>
-        )}
         <div className="mt-4 px-6 pb-6">
           {chartData ? (
             <ChartArea 
@@ -3355,24 +3349,25 @@ function Metric({label, value}:{label:string; value:string}){
   );
 }
 
-function ChartArea({points, labels, color = '#7c3aed'}:{points:number[]; labels?:string[]; color?:string}){
-  // Premium SVG area chart with smoothing, gradient, shadow, and markers
+function ChartArea({points, labels, color = '#6366f1'}:{points:number[]; labels?:string[]; color?:string}){
+  // Clean, professional area chart
   const width = 1100;
   const height = 300;
-  const m = { t: 20, r: 20, b: 50, l: 50 }; // Better margins for visual appeal
+  const m = { t: 20, r: 40, b: 60, l: 60 }; // Professional margins
   const iw = width - m.l - m.r;
   const ih = height - m.t - m.b;
   const maxVal = Math.max(...points, 0);
   const minVal = 0;
-  const padMax = maxVal === 0 ? 1 : maxVal * 1.15; // Slightly more padding for better visual
+  const padMax = maxVal === 0 ? 1 : maxVal * 1.05; // Minimal padding for clean look
   const n = points.length;
   const xs = (i:number) => m.l + (i/(n-1)) * iw;
-  // Fix the ys calculation to prevent going below baseline
+  // Ensure ys never goes below baseline - no negative chats possible
   const ys = (v:number) => {
-    if (maxVal === 0) return m.t + ih; // If all values are 0, put points at baseline
-    return m.t + ih - ((v - minVal) / (padMax - minVal)) * ih;
+    if (maxVal === 0) return m.t + ih; // All zeros = baseline
+    const normalized = Math.max(0, v); // Ensure no negative values
+    return m.t + ih - ((normalized - minVal) / (padMax - minVal)) * ih;
   };
-  const pts = points.map((p,i)=> ({ x: xs(i), y: ys(p) }));
+  const pts = points.map((p,i)=> ({ x: xs(i), y: ys(Math.max(0, p)) })); // Force non-negative
 
   // Catmull-Rom to Bezier smoothing
   const pathLine = (() => {
@@ -3402,51 +3397,31 @@ function ChartArea({points, labels, color = '#7c3aed'}:{points:number[]; labels?
     <svg width="100%" viewBox={`0 0 ${width} ${height}`} className="rounded-lg">
       <defs>
         <linearGradient id="chartFill" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.4" />
-          <stop offset="50%" stopColor={color} stopOpacity="0.15" />
+          <stop offset="0%" stopColor={color} stopOpacity="0.2" />
           <stop offset="100%" stopColor={color} stopOpacity="0.05" />
         </linearGradient>
-        <linearGradient id="chartStroke" x1="0" x2="1" y1="0" y2="0">
-          <stop offset="0%" stopColor={color} stopOpacity="1" />
-          <stop offset="100%" stopColor={color} stopOpacity="0.8" />
-        </linearGradient>
-        <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor={color} floodOpacity="0.2" />
-        </filter>
-        <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-          <feMerge> 
-            <feMergeNode in="coloredBlur"/>
-            <feMergeNode in="SourceGraphic"/>
-          </feMerge>
-        </filter>
       </defs>
 
-      {/* Background with subtle gradient */}
-      <rect x="0" y="0" width={width} height={height} fill="#fafafa" />
-      <rect x="0" y="0" width={width} height={height} fill="url(#chartFill)" opacity="0.1" />
+      {/* Clean white background */}
+      <rect x="0" y="0" width={width} height={height} fill="white" />
 
-      {/* Grid lines - more subtle */}
+      {/* Subtle grid lines */}
       {Array.from({length: 5}, (_,i)=> (
-        <line key={`h${i}`} x1={m.l} x2={m.l+iw} y1={m.t + (ih/4)*i} y2={m.t + (ih/4)*i} stroke="#e5e7eb" strokeWidth="0.5" opacity="0.6" />
-      ))}
-      {Array.from({length: n}, (_,i)=> (
-        <line key={`v${i}`} x1={xs(i)} x2={xs(i)} y1={m.t} y2={m.t+ih} stroke="#f3f4f6" strokeWidth="0.5" opacity="0.4" />
+        <line key={`h${i}`} x1={m.l} x2={m.l+iw} y1={m.t + (ih/4)*i} y2={m.t + (ih/4)*i} stroke="#f3f4f6" strokeWidth="1" />
       ))}
 
-      {/* Baseline - more prominent */}
-      <line x1={m.l} x2={m.l+iw} y1={m.t+ih} y2={m.t+ih} stroke="#d1d5db" strokeWidth="1" strokeDasharray="2,2" />
+      {/* Clean baseline */}
+      <line x1={m.l} x2={m.l+iw} y1={m.t+ih} y2={m.t+ih} stroke="#e5e7eb" strokeWidth="1" />
 
-      {/* Area + Stroke with enhanced styling */}
+      {/* Area fill */}
       <path d={pathArea} fill="url(#chartFill)" />
-      <path d={pathLine} fill="none" stroke="url(#chartStroke)" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" filter="url(#glow)" />
 
-      {/* Enhanced markers with hover effect */}
+      {/* Clean line */}
+      <path d={pathLine} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+
+      {/* Simple markers */}
       {pts.map((p,i)=> (
-        <g key={`pt${i}`}>
-          <circle cx={p.x} cy={p.y} r="6" fill="white" stroke={color} strokeWidth="3" opacity="0.9" />
-          <circle cx={p.x} cy={p.y} r="3" fill={color} />
-        </g>
+        <circle key={`pt${i}`} cx={p.x} cy={p.y} r="4" fill={color} />
       ))}
 
       {/* Y-axis labels */}
@@ -3456,9 +3431,9 @@ function ChartArea({points, labels, color = '#7c3aed'}:{points:number[]; labels?
         return (
           <text 
             key={`y${i}`} 
-            x={m.l - 8} 
+            x={m.l - 12} 
             y={yPos + 4} 
-            fontSize="11" 
+            fontSize="12" 
             fill="#6b7280" 
             textAnchor="end"
           >
@@ -3467,28 +3442,19 @@ function ChartArea({points, labels, color = '#7c3aed'}:{points:number[]; labels?
         );
       })}
 
-      {/* X-axis labels with better spacing */}
-      {xLabels.map((d,i)=> {
-        const labelSpacing = iw / (n - 1);
-        const shouldRotate = labelSpacing < 60; // Rotate labels if spacing is too small
-        const fontSize = shouldRotate ? "10" : "12";
-        const yPos = height - 8;
-        
-        return (
-          <text 
-            key={`lbl${i}`} 
-            x={xs(i)} 
-            y={yPos} 
-            fontSize={fontSize} 
-            fill="#6b7280" 
-            textAnchor="middle"
-            transform={shouldRotate ? `rotate(-45, ${xs(i)}, ${yPos})` : ''}
-            style={{ transformOrigin: `${xs(i)}px ${yPos}px` }}
-          >
-            {d}
-          </text>
-        );
-      })}
+      {/* X-axis labels */}
+      {xLabels.map((d,i)=> (
+        <text 
+          key={`lbl${i}`} 
+          x={xs(i)} 
+          y={height - 20} 
+          fontSize="12" 
+          fill="#6b7280" 
+          textAnchor="middle"
+        >
+          {d}
+        </text>
+      ))}
     </svg>
   );
 }
