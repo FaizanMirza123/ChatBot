@@ -5,9 +5,10 @@ This script should be run inside the Docker container
 """
 import sqlite3
 import os
+from config import settings
 
 def migrate_database():
-    db_path = "/app/app/chatbot.db"
+    db_path = settings.DB_URL.replace("sqlite:///", "")
     
     # Connect to the database
     conn = sqlite3.connect(db_path)

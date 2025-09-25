@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 import sqlite3
+from config import settings
 
 def check_database():
     """Check the database schema and data"""
-    db_path = "/app/app/chatbot.db"
+    db_path = settings.DB_URL.replace("sqlite:///", "")
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 

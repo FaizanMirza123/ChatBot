@@ -61,5 +61,6 @@ def fix_form_responses_table(db_path: str):
         conn.close()
 
 if __name__ == "__main__":
-    DB_PATH = os.getenv("DB_URL", "sqlite:///app/app/chatbot.db").replace("sqlite:///", "")
+    from config import settings
+    DB_PATH = settings.DB_URL.replace("sqlite:///", "")
     fix_form_responses_table(DB_PATH)

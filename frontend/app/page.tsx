@@ -1284,9 +1284,10 @@ const SettingsStarter = forwardRef<{
   // Load starter questions from backend
   useEffect(() => {
     const loadStarterQuestions = async () => {
+      const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
       setIsLoading(true);
       try {
-        const response = await fetch('https://chatbot.dipietroassociates.com/api/starter-questions');
+        const response = await fetch(`${API_BASE}/starter-questions`);
         if (response.ok) {
           const data = await response.json();
           const questionsArray = data.questions || [];
@@ -1307,11 +1308,12 @@ const SettingsStarter = forwardRef<{
   }, []);
 
   const saveStarterQuestions = useCallback(async () => {
+    const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
     setIsSaving(true);
     setStatus(null);
     
     try {
-      const response = await fetch('https://chatbot.dipietroassociates.com/api/starter-questions', {
+      const response = await fetch(`${API_BASE}/starter-questions`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -2626,9 +2628,10 @@ function InboxView({
 
   // Fetch chats
   const fetchChats = useCallback(async () => {
+    const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
     try {
       setLoading(true);
-      const response = await fetch('https://chatbot.dipietroassociates.com/api/api/inbox/chats', {
+      const response = await fetch(`${API_BASE}/api/inbox/chats`, {
         headers: {
           'X-Admin-Key': 'admin123'
         }
@@ -2649,9 +2652,10 @@ function InboxView({
 
   // Fetch users
   const fetchUsers = useCallback(async () => {
+    const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
     try {
       setLoading(true);
-      const response = await fetch('https://chatbot.dipietroassociates.com/api/api/inbox/users', {
+      const response = await fetch(`${API_BASE}/api/inbox/users`, {
         headers: {
           'X-Admin-Key': 'admin123'
         }
@@ -2672,8 +2676,9 @@ function InboxView({
 
   // Fetch chat detail
   const fetchChatDetail = useCallback(async (chatId: number) => {
+    const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
     try {
-      const response = await fetch(`https://chatbot.dipietroassociates.com/api/api/inbox/chats/${chatId}`, {
+      const response = await fetch(`${API_BASE}/api/inbox/chats/${chatId}`, {
         headers: {
           'X-Admin-Key': 'admin123'
         }
@@ -2689,8 +2694,9 @@ function InboxView({
 
   // Fetch user detail
   const fetchUserDetail = useCallback(async (userId: number) => {
+    const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
     try {
-      const response = await fetch(`https://chatbot.dipietroassociates.com/api/api/inbox/users/${userId}`, {
+      const response = await fetch(`${API_BASE}/api/inbox/users/${userId}`, {
         headers: {
           'X-Admin-Key': 'admin123'
         }
@@ -3475,11 +3481,12 @@ const SettingsUserForm = forwardRef<{
 
   // Save form configuration
   const saveUserFormConfig = useCallback(async () => {
+    const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
     try {
       setIsSaving(true);
       setStatus(null);
 
-      const response = await fetch('https://chatbot.dipietroassociates.com/api/widget-config', {
+      const response = await fetch(`${API_BASE}/widget-config`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

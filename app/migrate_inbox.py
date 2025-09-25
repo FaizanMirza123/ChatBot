@@ -1,5 +1,6 @@
 import sqlite3
 import os
+from config import settings
 
 def migrate_inbox_tables(db_path: str):
     """Add inbox-related columns to existing tables"""
@@ -87,5 +88,5 @@ def migrate_inbox_tables(db_path: str):
         conn.close()
 
 if __name__ == "__main__":
-    DB_PATH = os.getenv("DB_URL", "sqlite:///app/app/chatbot.db").replace("sqlite:///", "")
+    DB_PATH = settings.DB_URL.replace("sqlite:///", "")
     migrate_inbox_tables(DB_PATH)

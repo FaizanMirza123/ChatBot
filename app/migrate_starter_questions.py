@@ -5,9 +5,10 @@ Migration script to update starter_questions table to use dynamic JSON array
 import sqlite3
 import json
 from pathlib import Path
+from config import settings
 
 def migrate_starter_questions():
-    db_path = Path("/app/app/chatbot.db")
+    db_path = Path(settings.DB_URL.replace("sqlite:///", ""))
     if not db_path.exists():
         print("Database not found, skipping migration")
         return

@@ -23,8 +23,7 @@ from io import StringIO
 app = FastAPI()
 client = OpenAI(api_key=settings.OPENAI_API_KEY)
 rag_service = RAGService()
-# Database initialization is handled by init_database.py in Dockerfile
-# No need to recreate tables here as they're already created during container startup
+# Database tables are created automatically by SQLAlchemy when needed
 
 # CORS: allow configured origins; if none provided, allow all (no credentials)
 origins = settings.cors_origins_parsed or ["*"]
@@ -1683,6 +1682,13 @@ async def root():
 async def debug_db_status(db: Session = Depends(get_db)):
     """Debug endpoint to check database status"""
     try:
+        import os
+        from config import settings
+        
+        # Get database file info
+        db_url = settings.DB_URL
+        db_path = db_url.replace("sqlite:///", "")
+        
         # Check if database has data
         widget_count = db.query(WidgetConfig).count()
         messaging_count = db.query(MessagingConfig).count()
@@ -1694,17 +1700,24 @@ async def debug_db_status(db: Session = Depends(get_db)):
         
         return {
             "database_connected": True,
+            "database_url": db_url,
+            "database_path": db_path,
+            "database_file_exists": os.path.exists(db_path),
+            "database_file_size": os.path.getsize(db_path) if os.path.exists(db_path) else 0,
             "widget_config_count": widget_count,
             "messaging_config_count": messaging_count,
             "prompt_count": prompt_count,
             "current_bot_name": widget_config.bot_name if widget_config else None,
             "current_ai_model": messaging_config.ai_model if messaging_config else None,
-            "database_file_exists": True
+            "container_working_directory": os.getcwd(),
+            "database_directory_contents": os.listdir(os.path.dirname(db_path)) if os.path.exists(os.path.dirname(db_path)) else []
         }
     except Exception as e:
         return {
             "database_connected": False,
-            "error": str(e)
+            "error": str(e),
+            "database_url": getattr(settings, 'DB_URL', 'unknown'),
+            "container_working_directory": os.getcwd()
         }
 
 @app.get("/health")
