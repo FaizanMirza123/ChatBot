@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     APP_ENV: str = "dev"
     APP_DEBUG: bool = True
 
-    DB_URL: str
+    DB_URL: str = "postgresql://chatbot_user:chatbot_password@postgres:5432/chatbot"
 
     OPENAI_API_KEY: str
     OPENAI_ASSISTANT_ID: Optional[str] = None

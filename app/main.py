@@ -23,7 +23,16 @@ from io import StringIO
 app = FastAPI()
 client = OpenAI(api_key=settings.OPENAI_API_KEY)
 rag_service = RAGService()
-# Database tables are created automatically by SQLAlchemy when needed
+
+@app.on_event("startup")
+async def startup_event():
+    """Create database tables on startup"""
+    try:
+        Base.metadata.create_all(bind=engine)
+        print("✅ Database tables created successfully")
+    except Exception as e:
+        print(f"❌ Error creating database tables: {e}")
+        raise
 
 # CORS: allow configured origins; if none provided, allow all (no credentials)
 origins = settings.cors_origins_parsed or ["*"]
@@ -1685,9 +1694,8 @@ async def debug_db_status(db: Session = Depends(get_db)):
         import os
         from config import settings
         
-        # Get database file info
+        # Get database info
         db_url = settings.DB_URL
-        db_path = db_url.replace("sqlite:///", "")
         
         # Check if database has data
         widget_count = db.query(WidgetConfig).count()
@@ -1701,16 +1709,13 @@ async def debug_db_status(db: Session = Depends(get_db)):
         return {
             "database_connected": True,
             "database_url": db_url,
-            "database_path": db_path,
-            "database_file_exists": os.path.exists(db_path),
-            "database_file_size": os.path.getsize(db_path) if os.path.exists(db_path) else 0,
+            "database_type": "PostgreSQL",
             "widget_config_count": widget_count,
             "messaging_config_count": messaging_count,
             "prompt_count": prompt_count,
             "current_bot_name": widget_config.bot_name if widget_config else None,
             "current_ai_model": messaging_config.ai_model if messaging_config else None,
-            "container_working_directory": os.getcwd(),
-            "database_directory_contents": os.listdir(os.path.dirname(db_path)) if os.path.exists(os.path.dirname(db_path)) else []
+            "container_working_directory": os.getcwd()
         }
     except Exception as e:
         return {

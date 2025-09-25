@@ -32,8 +32,7 @@ COPY app/ ./
 COPY static/ ./static/
 
 # Set environment
-ENV DB_URL=sqlite:///app/app/chatbot.db \
-    PYTHONPATH=/app/app
+ENV PYTHONPATH=/app
 
 # Create directories
 # Create directories and model caches
