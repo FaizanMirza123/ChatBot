@@ -85,16 +85,8 @@ async def widget_iframe():
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
-# Default system prompt (helpful, grounded, and concise)
-DEFAULT_SYSTEM_PROMPT = (
-    "You are a helpful AI assistant for Dipietro & Associates.\n\n"
-    "Answer directly and keep it brief:\n"
-    "- Start with the direct answer in 1 sentence when possible.\n"
-    "- Use at most 2–3 short sentences, or up to 3 bullets if listing options.\n"
-    "- Avoid persona/intros (e.g., 'As an assistant...'). No fluff or repetition.\n"
-    "- If using the Knowledge Base (KB), weave facts in naturally and mention it's from the KB when helpful.\n"
-    "- For company-specific details (appointments, pricing, policies), don't guess—say what you know or what needs staff confirmation.\n"
-)
+# No default system prompt - user must set their own
+DEFAULT_SYSTEM_PROMPT = ""
 
 
 in_memory_system_prompt = DEFAULT_SYSTEM_PROMPT
@@ -453,22 +445,20 @@ async def save_lead_api(lead_in: LeadIn, x_client_id: str | None = Header(defaul
 def _get_or_create_widget_config(db: Session) -> WidgetConfig:
     cfg = db.query(WidgetConfig).first()
     if not cfg:
+        # Create empty config - no dummy data
         cfg = WidgetConfig(
-            form_enabled=True,
-            primary_color="#0d6efd",
+            form_enabled=False,
+            primary_color=None,
             avatar_url=None,
-            bot_name="ChatBot",
-            widget_icon="💬",
-            widget_position="right",
-            input_placeholder="Type your message...",
-            subheading="Our bot answers instantly",
-            show_branding=True,
-            open_by_default=False,
-            starter_questions=True,
-            form_fields=[
-                {"name":"name","label":"Your Name","type":"text","required":False,"placeholder":"Optional name","order":0},
-                {"name":"email","label":"Email","type":"email","required":True,"placeholder":"you@example.com","order":1}
-            ]
+            bot_name=None,
+            widget_icon=None,
+            widget_position=None,
+            input_placeholder=None,
+            subheading=None,
+            show_branding=None,
+            open_by_default=None,
+            starter_questions=None,
+            form_fields=None
         )
         db.add(cfg)
         db.commit()
@@ -612,20 +602,21 @@ async def update_bot_config(data: BotConfigIn, db: Session = Depends(get_db), _:
 def _get_or_create_messaging_config(db: Session) -> MessagingConfig:
     cfg = db.query(MessagingConfig).first()
     if not cfg:
+        # Create empty config - no dummy data
         cfg = MessagingConfig(
-            ai_model="gpt-4o",
-            conversational=True,
-            strict_faq=True,
-            response_length="Medium",
-            suggest_followups=False,
-            allow_images=False,
-            show_sources=True,
-            post_feedback=True,
-            multilingual=True,
-            show_welcome=True,
-            welcome_message="Hey there, how can I help you?",
-            no_source_message="The bot is yet to be trained, please add the data and train the bot.",
-            server_error_message="Apologies, there seems to be a server error."
+            ai_model=None,
+            conversational=None,
+            strict_faq=None,
+            response_length=None,
+            suggest_followups=None,
+            allow_images=None,
+            show_sources=None,
+            post_feedback=None,
+            multilingual=None,
+            show_welcome=None,
+            welcome_message=None,
+            no_source_message=None,
+            server_error_message=None
         )
         db.add(cfg)
         db.commit()
@@ -636,9 +627,10 @@ def _get_or_create_starter_questions(db: Session) -> StarterQuestions:
     """Get or create starter questions configuration (single row table)"""
     cfg = db.query(StarterQuestions).first()
     if not cfg:
+        # Create empty config - no dummy data
         cfg = StarterQuestions(
             questions=[],
-            enabled=True
+            enabled=False
         )
         db.add(cfg)
         db.commit()

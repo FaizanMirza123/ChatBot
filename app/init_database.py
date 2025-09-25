@@ -248,47 +248,10 @@ def init_database():
         for table_sql in tables:
             cursor.execute(table_sql)
         
-        # Insert default configurations if they don't exist
-        cursor.execute("SELECT COUNT(*) FROM widget_config")
-        if cursor.fetchone()[0] == 0:
-            cursor.execute("""
-                INSERT INTO widget_config (
-                    form_enabled, primary_color, bot_name, widget_icon, 
-                    widget_position, input_placeholder, subheading, 
-                    show_branding, open_by_default, starter_questions,
-                    form_fields
-                ) VALUES (
-                    1, '#0d6efd', 'ChatBot', '💬', 'right', 
-                    'Type your message...', 'Our bot answers instantly',
-                    1, 0, 1, '[]'
-                )
-            """)
-            print("✅ Created default widget configuration")
-        
-        cursor.execute("SELECT COUNT(*) FROM messaging_config")
-        if cursor.fetchone()[0] == 0:
-            cursor.execute("""
-                INSERT INTO messaging_config (
-                    ai_model, conversational, strict_faq, response_length,
-                    suggest_followups, allow_images, show_sources, post_feedback,
-                    multilingual, show_welcome, welcome_message, no_source_message,
-                    server_error_message
-                ) VALUES (
-                    'gpt-4o', 1, 1, 'Medium', 0, 0, 1, 1, 1, 1,
-                    'Hey there, how can I help you?',
-                    'The bot is yet to be trained, please add the data and train the bot.',
-                    'Apologies, there seems to be a server error.'
-                )
-            """)
-            print("✅ Created default messaging configuration")
-        
-        cursor.execute("SELECT COUNT(*) FROM starter_questions")
-        if cursor.fetchone()[0] == 0:
-            cursor.execute("""
-                INSERT INTO starter_questions (questions, enabled) 
-                VALUES ('[]', 1)
-            """)
-            print("✅ Created default starter questions configuration")
+        # NO DUMMY DATA - Only create empty tables
+        # All configuration will come from user input via the admin panel
+        print("✅ Database tables created - no dummy data inserted")
+        print("📝 All configuration will be set by user through admin panel")
         
         # Record this initialization as completed
         cursor.execute("""
