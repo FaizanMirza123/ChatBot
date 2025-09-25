@@ -362,7 +362,9 @@ class RAGService:
             length_instruction = self._get_length_instruction(messaging_config.get('response_length', 'Medium'))
             conversational_instruction = self._get_conversational_instruction(messaging_config.get('conversational', True))
             
-            concise_prompt = system_prompt + f"\n\n{conversational_instruction} {length_instruction} No intros."
+            # Create a flexible system prompt that respects messaging config
+            base_system_prompt = self._create_flexible_system_prompt(system_prompt, messaging_config)
+            concise_prompt = base_system_prompt + f"\n\n{conversational_instruction} {length_instruction} No intros."
             messages: list[dict] = [{"role": "system", "content": concise_prompt}]
             if history:
                 messages.extend(history)
@@ -391,7 +393,9 @@ class RAGService:
             length_instruction = self._get_length_instruction(messaging_config.get('response_length', 'Medium'))
             conversational_instruction = self._get_conversational_instruction(messaging_config.get('conversational', True))
             
-            concise_prompt = system_prompt + f"\n\n{conversational_instruction} {length_instruction} No intros."
+            # Create a flexible system prompt that respects messaging config
+            base_system_prompt = self._create_flexible_system_prompt(system_prompt, messaging_config)
+            concise_prompt = base_system_prompt + f"\n\n{conversational_instruction} {length_instruction} No intros."
             messages: list[dict] = [{"role": "system", "content": concise_prompt}]
             if history:
                 messages.extend(history)
@@ -421,8 +425,11 @@ class RAGService:
         length_instruction = self._get_length_instruction(messaging_config.get('response_length', 'Medium'))
         conversational_instruction = self._get_conversational_instruction(messaging_config.get('conversational', True))
         
+        # Create a flexible system prompt that respects messaging config
+        base_system_prompt = self._create_flexible_system_prompt(system_prompt, messaging_config)
+        
         rag_system_prompt = (
-            f"{system_prompt}\n\n"
+            f"{base_system_prompt}\n\n"
             f"You have access to the following relevant information from the knowledge base:\n\n"
             f"{context}\n\n"
             "Instructions:\n"
@@ -501,3 +508,54 @@ class RAGService:
             return 800
         else:  # Medium
             return 300
+    
+    def _create_flexible_system_prompt(self, system_prompt: str, messaging_config: dict) -> str:
+        """Create a flexible system prompt that respects messaging config settings."""
+        # Extract the core role/company info from the system prompt
+        # but make it flexible based on messaging config
+        
+        # Check if the system prompt is very specific (like the DiPietro one)
+        if "Maximum 1-2 sentences" in system_prompt and "CRITICAL" in system_prompt:
+            # This is a very specific system prompt that overrides messaging config
+            # We need to make it more flexible
+            
+            # Extract the core company info
+            company_info = ""
+            if "DiPietro & Associates" in system_prompt:
+                company_info = "You are a virtual receptionist for DiPietro & Associates, an AED and emergency training company."
+            elif "receptionist" in system_prompt.lower():
+                # Generic receptionist role
+                company_info = "You are a virtual receptionist."
+            else:
+                # Use the first line as company info
+                lines = system_prompt.split('\n')
+                company_info = lines[0] if lines else "You are a helpful assistant."
+            
+            # Create a flexible base prompt
+            base_prompt = f"{company_info}\n\n"
+            
+            # Add flexible communication style based on messaging config
+            if messaging_config.get('conversational', True):
+                base_prompt += "Be conversational and helpful in your responses.\n"
+            else:
+                base_prompt += "Be direct and professional in your responses.\n"
+            
+            # Add response length guidance based on config
+            response_length = messaging_config.get('response_length', 'Medium')
+            if response_length == 'Short':
+                base_prompt += "Keep responses brief and to the point.\n"
+            elif response_length == 'Long':
+                base_prompt += "Provide detailed and comprehensive responses.\n"
+            else:  # Medium
+                base_prompt += "Provide concise but helpful responses.\n"
+            
+            # Add FAQ handling based on config
+            if messaging_config.get('strict_faq', True):
+                base_prompt += "Stick to information you know about. If you don't know something, offer to connect them with someone who can help.\n"
+            else:
+                base_prompt += "Do your best to help with any questions, even if not directly related to your knowledge base.\n"
+            
+            return base_prompt
+        else:
+            # This is a more flexible system prompt, use it as-is
+            return system_prompt
