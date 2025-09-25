@@ -413,12 +413,10 @@
     
     document.body.appendChild(tooltip);
     
-    // Show tooltip with animation
-    setTimeout(() => {
-      tooltip.classList.add('show');
-    }, 100);
+    // Show tooltip immediately with animation
+    tooltip.classList.add('show');
     
-    // Auto-hide after 5 seconds
+    // Auto-hide after 4 seconds
     setTimeout(() => {
       if(tooltip && tooltip.parentNode) {
         tooltip.classList.remove('show');
@@ -426,9 +424,9 @@
           if(tooltip && tooltip.parentNode) {
             tooltip.remove();
           }
-        }, 300);
+        }, 200); // Reduced animation time
       }
-    }, 5000);
+    }, 4000);
   }
   
   function showUserFormScreen() {
@@ -595,7 +593,7 @@
         });
         
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Form submission timeout')), 10000)
+          setTimeout(() => reject(new Error('Form submission timeout')), 5000)
         );
         
         const response = await Promise.race([submitPromise, timeoutPromise]);
@@ -632,12 +630,12 @@
         submitBtn.disabled = false;
         submitBtn.textContent = 'Continue';
         
-        // Remove error message after 5 seconds
+        // Remove error message after 3 seconds
         setTimeout(() => {
           if(errorMsg.parentNode) {
             errorMsg.remove();
           }
-        }, 5000);
+        }, 3000);
       }
     });
     
@@ -678,10 +676,8 @@
       console.log('starterQuestions enabled:', window.starterQuestions?.enabled);
       console.log('Calling showChatScreen()...');
       
-      // Ensure chat screen is visible
-      setTimeout(() => {
-        showChatScreen();
-      }, 50);
+      // Show chat screen immediately
+      showChatScreen();
       return;
     }
     
@@ -984,7 +980,7 @@
           console.log('Scheduling welcome message display');
           setTimeout(() => {
             showWelcomeMessage();
-          }, 1000); // Show after 1 second delay
+          }, 500); // Reduced delay for faster response
         }
       } else {
         console.log('No messaging config loaded');
@@ -1011,43 +1007,29 @@
     } 
   }
   (async()=>{ await refreshConfig(); })();
-    let poll=null; function startPoll(){ if(poll) return; poll=setInterval(refreshConfig,20000);} function stopPoll(){ if(poll){ clearInterval(poll); poll=null; }}
+    let poll=null; function startPoll(){ if(poll) return; poll=setInterval(refreshConfig,30000);} function stopPoll(){ if(poll){ clearInterval(poll); poll=null; }}
     btn.onclick=async()=>{ 
       const was=panel.classList.contains('open'); 
       if(!was){ 
-        await refreshConfig().catch(()=>{}); 
-        // Hide welcome tooltip when chat opens
+        // Show panel immediately for better UX
+        panel.classList.toggle('open'); 
+        
+        // Hide welcome tooltip immediately
         const existingTooltip = document.querySelector('.cb-welcome-tooltip');
         if(existingTooltip) {
           existingTooltip.classList.remove('show');
-          setTimeout(() => {
-            if(existingTooltip && existingTooltip.parentNode) {
-              existingTooltip.remove();
-            }
-          }, 300);
+          existingTooltip.remove(); // Remove immediately instead of delayed
         }
-      } 
-      panel.classList.toggle('open'); 
-        if(!was) {
-          startPoll();
-          // Show user form screen after panel opens
-          setTimeout(() => {
-            console.log('Panel opened, showing user form screen');
-            showUserFormScreen();
-            
-            // Fallback: if no screen is shown after 500ms, show chat
-            setTimeout(() => {
-              const formVisible = formScreen.style.display === 'flex';
-              const starterVisible = starterScreen.style.display === 'flex';
-              const chatVisible = chatWrapper.style.display === 'flex';
-              
-              if(!formVisible && !starterVisible && !chatVisible) {
-                console.log('No screen visible, showing chat as fallback');
-                showChatScreen();
-              }
-            }, 500);
-          }, 100);
-        } else {
+        
+        // Show user form screen immediately
+        showUserFormScreen();
+        
+        // Refresh config in background (non-blocking)
+        refreshConfig().catch(()=>{});
+        
+        startPoll();
+      } else {
+        panel.classList.toggle('open'); 
         stopPoll(); 
       }
     };
