@@ -3,7 +3,7 @@ import sqlite3
 
 def fix_user_data():
     """Fix user data by setting default values for created_at and last_activity"""
-    db_path = "/app/chatbot.db"
+    db_path = "/app/app/chatbot.db"
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 

@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 def migrate_starter_questions():
-    db_path = Path("chatbot.db")
+    db_path = Path("/app/app/chatbot.db")
     if not db_path.exists():
         print("Database not found, skipping migration")
         return

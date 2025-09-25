@@ -32,7 +32,7 @@ COPY app/ ./
 COPY static/ ./static/
 
 # Set environment
-ENV DB_URL=sqlite:///app/chatbot.db \
+ENV DB_URL=sqlite:///app/app/chatbot.db \
     PYTHONPATH=/app/app
 
 # Create directories

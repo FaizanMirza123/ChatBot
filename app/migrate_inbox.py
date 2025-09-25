@@ -87,5 +87,5 @@ def migrate_inbox_tables(db_path: str):
         conn.close()
 
 if __name__ == "__main__":
-    DB_PATH = os.getenv("DB_URL", "sqlite:///app/chatbot.db").replace("sqlite:///", "")
+    DB_PATH = os.getenv("DB_URL", "sqlite:///app/app/chatbot.db").replace("sqlite:///", "")
     migrate_inbox_tables(DB_PATH)

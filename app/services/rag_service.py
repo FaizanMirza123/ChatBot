@@ -487,11 +487,11 @@ class RAGService:
     def _get_length_instruction(self, response_length: str) -> str:
         """Get response length instruction based on setting."""
         if response_length == 'Short':
-            return "Write a very brief answer. Maximum 1-2 short sentences."
+            return "CRITICAL: Write ONLY 1-2 very short sentences. Be extremely brief and direct. No additional details or explanations."
         elif response_length == 'Long':
-            return "Write a detailed answer. Provide comprehensive information with 4-6 sentences or more."
+            return "CRITICAL: Write a comprehensive, detailed answer with 4-6 sentences minimum. Include specific details, examples, and thorough explanations. Be informative and complete."
         else:  # Medium
-            return "Write a concise answer. Maximum 2–3 short sentences, or up to 3 bullets if listing."
+            return "CRITICAL: Write 2-3 concise sentences. Be informative but not overly detailed. Provide key information without extensive elaboration."
     
     def _get_conversational_instruction(self, conversational: bool) -> str:
         """Get conversational mode instruction."""
@@ -503,11 +503,11 @@ class RAGService:
     def _get_max_tokens(self, response_length: str) -> int:
         """Get max tokens based on response length setting."""
         if response_length == 'Short':
-            return 150
+            return 50  # Very restrictive for short responses
         elif response_length == 'Long':
-            return 800
+            return 1000  # More generous for long responses
         else:  # Medium
-            return 300
+            return 200  # Moderate for medium responses
     
     def _create_flexible_system_prompt(self, system_prompt: str, messaging_config: dict) -> str:
         """Create a flexible system prompt that respects messaging config settings."""
@@ -543,11 +543,11 @@ class RAGService:
             # Add response length guidance based on config
             response_length = messaging_config.get('response_length', 'Medium')
             if response_length == 'Short':
-                base_prompt += "Keep responses brief and to the point.\n"
+                base_prompt += "CRITICAL: Always respond with ONLY 1-2 very short sentences. Be extremely brief and direct.\n"
             elif response_length == 'Long':
-                base_prompt += "Provide detailed and comprehensive responses.\n"
+                base_prompt += "CRITICAL: Always provide detailed, comprehensive responses with 4-6 sentences minimum. Include specific details and examples.\n"
             else:  # Medium
-                base_prompt += "Provide concise but helpful responses.\n"
+                base_prompt += "CRITICAL: Always respond with 2-3 concise sentences. Be informative but not overly detailed.\n"
             
             # Add FAQ handling based on config
             if messaging_config.get('strict_faq', True):

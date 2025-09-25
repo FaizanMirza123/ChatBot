@@ -3,7 +3,7 @@ import sqlite3
 
 def check_database():
     """Check the database schema and data"""
-    db_path = "/app/chatbot.db"
+    db_path = "/app/app/chatbot.db"
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 

@@ -6,7 +6,7 @@ services:
     env_file:
       - .env
     environment:
-      - DB_URL=${DB_URL:-sqlite:///app/chatbot.db}
+      - DB_URL=${DB_URL:-sqlite:///app/app/chatbot.db}
       - HF_HOME=/root/.cache/huggingface
       - TRANSFORMERS_CACHE=/root/.cache/huggingface
       - SENTENCE_TRANSFORMERS_HOME=/root/.cache/torch/sentence_transformers

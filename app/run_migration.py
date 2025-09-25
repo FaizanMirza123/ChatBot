@@ -4,7 +4,7 @@ import os
 
 def run_migration():
     """Run the inbox migration inside the container"""
-    db_path = "/app/chatbot.db"
+    db_path = "/app/app/chatbot.db"
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
