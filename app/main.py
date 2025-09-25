@@ -8,7 +8,7 @@ from typing import List
 from openai import OpenAI
 from config import settings
 from db import get_db, Base, engine
-from models import Prompt, KnowledgeDocument, Message, User, Session as ChatSession, Lead, WidgetConfig, FAQ, DocumentVisibility, MessagingConfig, StarterQuestions, FormResponse
+from models import Prompt, KnowledgeDocument, Message, User, Session as ChatSession, Lead, WidgetConfig, FAQ, DocumentVisibility, MessagingConfig, StarterQuestions, FormResponse, Form
 from schemas import ChatIn, ChatResponseOut, SystemPromptIn, SystemPromptOut, DocumentUploadOut, DocumentListOut, DocumentDeleteOut, ChatMessageOut, ChatDetailOut, UserOut, UserDetailOut, ChatOut
 from schemas import LeadIn, LeadOut, WidgetConfigOut, WidgetConfigIn
 from schemas import FormField, BotConfigOut, BotConfigIn, MessagingConfigOut, MessagingConfigIn, StarterQuestionsOut, StarterQuestionsIn
@@ -840,7 +840,9 @@ async def submit_dynamic_form(payload: dict, x_client_id: str | None = Header(de
         # Get or create form based on widget configuration
         # Use a hash of the fields configuration to create a unique form ID
         import hashlib
-        fields_hash = hashlib.md5(str(sorted(fields)).encode()).hexdigest()[:8]
+        # Convert fields to a sorted string representation for consistent hashing
+        fields_str = str(sorted([(f.get('name', ''), f.get('type', ''), f.get('required', False)) for f in fields]))
+        fields_hash = hashlib.md5(fields_str.encode()).hexdigest()[:8]
         form_id = int(fields_hash, 16) % 1000000  # Convert to reasonable integer ID
         
         form = db.query(Form).filter(Form.id == form_id).first()
@@ -874,7 +876,8 @@ async def submit_dynamic_form(payload: dict, x_client_id: str | None = Header(de
             if existing:
                 if name_val is not None:
                     existing.name = name_val
-                existing.email = str(email_val)
+                if email_val is not None:
+                    existing.email = email_val
                 db.add(existing)
             else:
                 new_lead = Lead(user_id=sess.user_id, client_id=client_id, name=name_val or '', email=str(email_val))
