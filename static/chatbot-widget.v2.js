@@ -620,7 +620,7 @@
         
         // Show error message
         const errorMsg = el('div', 'cb-form-error');
-        errorMsg.textContent = `Failed to submit form: ${error.message}. Please try again.`;
+        errorMsg.textContent = 'Error submitting form. Please try again.';
         errorMsg.style.cssText = `
           color: #dc2626; background: #fef2f2; border: 1px solid #fecaca;
           padding: 12px; border-radius: 8px; margin-top: 16px;

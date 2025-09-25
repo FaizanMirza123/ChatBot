@@ -780,42 +780,41 @@ async def upload_avatar(file: UploadFile = File(...), db: Session = Depends(get_
 # Dynamic form submission (generic) - optional future replacement for /lead
 @app.post("/form/submit")
 async def submit_dynamic_form(payload: dict, x_client_id: str | None = Header(default=None), x_forwarded_for: str | None = Header(default=None), x_real_ip: str | None = Header(default=None), db: Session = Depends(get_db)):
-    cfg = _get_or_create_widget_config(db)
-    fields = cfg.form_fields or []
-    # basic validation
-    required_missing = []
-    normalized = {}
-    for f in fields:
-        key = f.get('name')
-        if not key:
-            continue
-        val = payload.get(key)
-        if f.get('required') and (val is None or str(val).strip()==""):
-            required_missing.append(key)
-        else:
-            if val is not None:
-                normalized[key] = val
-    if required_missing:
-        raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(required_missing)}")
-    
-    # Extract IP address from headers
-    ip_address = None
-    if x_real_ip:
-        ip_address = x_real_ip
-    elif x_forwarded_for:
-        # X-Forwarded-For can contain multiple IPs, take the first one
-        ip_address = x_forwarded_for.split(',')[0].strip()
-    
-    # Get form data - check both lowercase and capitalized versions
-    email_val = normalized.get('email') or normalized.get('Email')
-    name_val = normalized.get('name') or normalized.get('Name')
-    client_id = (x_client_id or 'anonymous').strip() or 'anonymous'
-    
-    # Debug logging
-    print(f"DEBUG: normalized data: {normalized}")
-    print(f"DEBUG: email_val: {email_val}, name_val: {name_val}")
-    
     try:
+        cfg = _get_or_create_widget_config(db)
+        fields = cfg.form_fields or []
+        # basic validation
+        required_missing = []
+        normalized = {}
+        for f in fields:
+            key = f.get('name')
+            if not key:
+                continue
+            val = payload.get(key)
+            if f.get('required') and (val is None or str(val).strip()==""):
+                required_missing.append(key)
+            else:
+                if val is not None:
+                    normalized[key] = val
+        if required_missing:
+            raise HTTPException(status_code=400, detail="Please fill in all required fields")
+        
+        # Extract IP address from headers
+        ip_address = None
+        if x_real_ip:
+            ip_address = x_real_ip
+        elif x_forwarded_for:
+            # X-Forwarded-For can contain multiple IPs, take the first one
+            ip_address = x_forwarded_for.split(',')[0].strip()
+        
+        # Get form data - check both lowercase and capitalized versions
+        email_val = normalized.get('email') or normalized.get('Email')
+        name_val = normalized.get('name') or normalized.get('Name')
+        client_id = (x_client_id or 'anonymous').strip() or 'anonymous'
+        
+        # Debug logging
+        print(f"DEBUG: normalized data: {normalized}")
+        print(f"DEBUG: email_val: {email_val}, name_val: {name_val}")
         # Create or update user and session when form is submitted
         sess = _get_or_create_client_session(
             db, 
@@ -838,9 +837,26 @@ async def submit_dynamic_form(payload: dict, x_client_id: str | None = Header(de
                 user.last_activity = func.now()
                 db.add(user)
         
+        # Get or create form based on widget configuration
+        # Use a hash of the fields configuration to create a unique form ID
+        import hashlib
+        fields_hash = hashlib.md5(str(sorted(fields)).encode()).hexdigest()[:8]
+        form_id = int(fields_hash, 16) % 1000000  # Convert to reasonable integer ID
+        
+        form = db.query(Form).filter(Form.id == form_id).first()
+        if not form:
+            # Create form for this specific widget configuration
+            form = Form(
+                id=form_id,
+                fields_schema=fields
+            )
+            db.add(form)
+            db.commit()
+            db.refresh(form)
+        
         # Store form response
         form_response = FormResponse(
-            form_id=1,  # Assuming form ID 1 for dynamic form
+            form_id=form.id,
             user_id=sess.user_id,
             client_id=client_id,
             response_json=normalized
@@ -868,7 +884,8 @@ async def submit_dynamic_form(payload: dict, x_client_id: str | None = Header(de
         return {"saved": True, "data": normalized}
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Error saving form: {str(e)}") 
+        print(f"Form submission error: {str(e)}")  # Log the full error for debugging
+        raise HTTPException(status_code=500, detail="Error submitting form. Please try again.") 
 
 # Chat/message aliases under /api for embedders that prefix paths
 @app.post("/api/chat", response_model=ChatResponseOut)
