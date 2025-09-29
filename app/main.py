@@ -1720,6 +1720,11 @@ async def login(login_data: LoginIn):
     except Exception as e:
         return LoginOut(success=False, message=f"Login error: {str(e)}", token=None)
 
+@app.post("/login", response_model=LoginOut)
+async def login_alt(login_data: LoginIn):
+    """Alternative login endpoint (for reverse proxy compatibility)"""
+    return await login(login_data)
+
 @app.get("/api")
 async def root():
     return {"message": "ChatBot API is running"}
