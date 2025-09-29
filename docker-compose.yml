@@ -7,11 +7,25 @@ services:
       - POSTGRES_DB=chatbot
       - POSTGRES_USER=chatbot_user
       - POSTGRES_PASSWORD=chatbot_password
-    ports:
-      - "5432:5432"
+    # SECURITY: Remove public port exposure - only accessible within Docker network
+    # ports:
+    #   - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
     restart: unless-stopped
+    # Add security configurations
+    command: >
+      postgres
+      -c config_file=/etc/postgresql/postgresql.conf
+      -c hba_file=/etc/postgresql/pg_hba.conf
+      -c log_statement=all
+      -c log_min_duration_statement=1000
+      -c log_connections=on
+      -c log_disconnections=on
+      -c log_hostname=on
+      -c log_line_prefix='%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
 
   api:
     build: .
