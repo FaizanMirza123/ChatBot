@@ -12,16 +12,10 @@ services:
     #   - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./postgresql.conf:/etc/postgresql/postgresql.conf:ro
-      - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
     restart: unless-stopped
-    # Add security configurations
+    # Add basic security configurations without SSL
     command: >
       postgres
-      -c config_file=/etc/postgresql/postgresql.conf
-      -c hba_file=/etc/postgresql/pg_hba.conf
-      -c log_statement=all
-      -c log_min_duration_statement=1000
       -c log_connections=on
       -c log_disconnections=on
       -c log_hostname=on
