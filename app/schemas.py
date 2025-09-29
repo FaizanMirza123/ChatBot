@@ -205,3 +205,13 @@ class UserDetailOut(BaseModel):
     last_activity: str
     chat_count: int
     sessions: List[Dict[str, Any]]
+
+# Login schemas
+class LoginIn(BaseModel):
+    username: str
+    password: str
+
+class LoginOut(BaseModel):
+    success: bool
+    message: str
+    token: Optional[str] = None

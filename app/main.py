@@ -12,6 +12,7 @@ from models import Prompt, KnowledgeDocument, Message, User, Session as ChatSess
 from schemas import ChatIn, ChatResponseOut, SystemPromptIn, SystemPromptOut, DocumentUploadOut, DocumentListOut, DocumentDeleteOut, ChatMessageOut, ChatDetailOut, UserOut, UserDetailOut, ChatOut
 from schemas import LeadIn, LeadOut, WidgetConfigOut, WidgetConfigIn
 from schemas import FormField, BotConfigOut, BotConfigIn, MessagingConfigOut, MessagingConfigIn, StarterQuestionsOut, StarterQuestionsIn
+from schemas import LoginIn, LoginOut
 from services.rag_service import RAGService
 from utils.token_counter import trim_history_to_token_budget
 import os
@@ -1702,6 +1703,22 @@ async def get_chat_interface():
 </html>
     """
     return html_content
+
+@app.post("/api/login", response_model=LoginOut)
+async def login(login_data: LoginIn):
+    """Login endpoint with static credentials from environment"""
+    try:
+        if login_data.username == settings.ADMIN_USERNAME and login_data.password == settings.ADMIN_PASSWORD:
+            # Generate a simple token (in production, use proper JWT)
+            import hashlib
+            import time
+            token_data = f"{login_data.username}:{time.time()}:{settings.ADMIN_PASSWORD}"
+            token = hashlib.sha256(token_data.encode()).hexdigest()
+            return LoginOut(success=True, message="Login successful", token=token)
+        else:
+            return LoginOut(success=False, message="Invalid credentials", token=None)
+    except Exception as e:
+        return LoginOut(success=False, message=f"Login error: {str(e)}", token=None)
 
 @app.get("/api")
 async def root():

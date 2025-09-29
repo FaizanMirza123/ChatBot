@@ -1,15 +1,31 @@
 "use client";
 import { useEffect, useMemo, useState, forwardRef, useImperativeHandle, useCallback, type ReactNode } from 'react';
 import { clsx } from 'clsx';
+import { useRouter } from 'next/navigation';
 
 const NavItem = ({ label, active=false, onClick }: { label: string; active?: boolean; onClick?: () => void }) => (
   <button type="button" onClick={onClick} className={clsx('sidebar-link w-full text-left', active && 'active')}>{label}</button>
 );
 
 export default function Page() {
+  const router = useRouter();
   const [trainingOpen, setTrainingOpen] = useState(false);
   const [activeSub, setActiveSub] = useState<'sources' | 'system-prompt' | null>(null);
   const [selectedMain, setSelectedMain] = useState<'training' | 'settings' | 'connect' | 'inbox' | 'analytics'>('settings');
+  
+  // Authentication check
+  useEffect(() => {
+    const token = localStorage.getItem('admin_token');
+    if (!token) {
+      router.push('/login');
+    }
+  }, [router]);
+
+  // Logout function
+  const handleLogout = () => {
+    localStorage.removeItem('admin_token');
+    router.push('/login');
+  };
   
   // Lift state up to persist across section switches
   const [settingsTab, setSettingsTab] = useState<'general'|'appearance'|'messaging'|'starter'|'user'>('general');
@@ -273,6 +289,21 @@ export default function Page() {
           <NavItem label="Connect" active={selectedMain==='connect'} onClick={()=> setSelectedMain('connect')} />
           <NavItem label="Inbox" active={selectedMain==='inbox'} onClick={()=> setSelectedMain('inbox')} />
           <NavItem label="Analytics" active={selectedMain==='analytics'} onClick={()=> setSelectedMain('analytics')} />
+          
+          {/* Logout Button */}
+          <div className="mt-auto pt-4 border-t border-gray-700">
+            <button 
+              onClick={handleLogout}
+              className="w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-white/10 hover:text-white rounded-lg transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                Logout
+              </div>
+            </button>
+          </div>
         </nav>
         {/* Removed Help Center / Contact Sales / Submit a Ticket per request */}
       </aside>

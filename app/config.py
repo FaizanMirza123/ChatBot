@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     OPENAI_ASSISTANT_ID: Optional[str] = None
     ADMIN_API_KEY: Optional[str] = None
     
+    # Static Login Credentials
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_PASSWORD: str = "admin123"
+    
     # Chat history settings
     CHAT_HISTORY_MAX_TOKENS: int = 3000  # max tokens for conversation history (leaves room for system prompt + new message + response)
 
