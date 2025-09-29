@@ -16,16 +16,46 @@ export default function LoginPage() {
     setError('');
 
     try {
-      // Call the login endpoint
-      const response = await fetch('/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ username, password }),
-      });
+      // Try multiple endpoints to find the working one
+      const endpoints = [
+        '/login',
+        '/api/login', 
+        `${window.location.protocol}//${window.location.hostname}:8000/login`,
+        `${window.location.protocol}//${window.location.hostname}:8000/api/login`
+      ];
+      
+      let response = null;
+      let lastError = null;
+      
+      for (const endpoint of endpoints) {
+        try {
+          console.log('Trying endpoint:', endpoint);
+          response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ username, password }),
+          });
+          
+          if (response.ok) {
+            console.log('Success with endpoint:', endpoint);
+            break;
+          } else {
+            console.log('Failed with endpoint:', endpoint, response.status);
+          }
+        } catch (err) {
+          console.log('Error with endpoint:', endpoint, err);
+          lastError = err;
+        }
+      }
+
+      if (!response || !response.ok) {
+        throw lastError || new Error('No working endpoint found');
+      }
 
       const data = await response.json();
+      console.log('Login response:', data);
 
       if (data.success) {
         // Store token in localStorage
@@ -36,7 +66,8 @@ export default function LoginPage() {
         setError(data.message || 'Login failed');
       }
     } catch (err) {
-      setError('Network error. Please try again.');
+      console.error('Login error:', err);
+      setError(`Network error: ${err.message}. Please try again.`);
     } finally {
       setIsLoading(false);
     }

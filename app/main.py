@@ -1723,6 +1723,7 @@ async def login(login_data: LoginIn):
 @app.post("/login", response_model=LoginOut)
 async def login_alt(login_data: LoginIn):
     """Alternative login endpoint (for reverse proxy compatibility)"""
+    print(f"🔐 LOGIN ATTEMPT: username={login_data.username}, password={'*' * len(login_data.password)}")
     return await login(login_data)
 
 @app.get("/api")
