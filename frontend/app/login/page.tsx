@@ -16,7 +16,8 @@ export default function LoginPage() {
     setError('');
 
     try {
-      const response = await fetch('/api/login', {
+      // Call the API endpoint - use the same domain but port 8000
+      const response = await fetch(`${window.location.protocol}//${window.location.hostname}:8000/api/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
