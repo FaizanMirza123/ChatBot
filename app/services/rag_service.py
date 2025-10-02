@@ -313,6 +313,7 @@ class RAGService:
         """
         Generate a response based on messaging configuration. Use KB when relevant; otherwise regular chat.
         Returns (response, used_kb)
+        System prompt takes ABSOLUTE PRIORITY over all other instructions.
         """
         # Default messaging config if not provided
         if messaging_config is None:
@@ -358,14 +359,9 @@ class RAGService:
                 all_results = []
         
         if not all_results:
-            # Apply response length settings
-            length_instruction = self._get_length_instruction(messaging_config.get('response_length', 'Medium'))
-            conversational_instruction = self._get_conversational_instruction(messaging_config.get('conversational', True))
-            
-            # Create a flexible system prompt that respects messaging config
-            base_system_prompt = self._create_flexible_system_prompt(system_prompt, messaging_config)
-            concise_prompt = base_system_prompt + f"\n\n{conversational_instruction} {length_instruction} No intros."
-            messages: list[dict] = [{"role": "system", "content": concise_prompt}]
+            # SYSTEM PROMPT IS ABSOLUTE - use it exactly as provided without modification
+            # Only add minimal context about no KB results if needed
+            messages: list[dict] = [{"role": "system", "content": system_prompt}]
             if history:
                 messages.extend(history)
             messages.append({"role": "user", "content": q})
@@ -373,8 +369,8 @@ class RAGService:
             client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
             response = client.chat.completions.create(
                 model=messaging_config.get('ai_model', settings.OPENAI_MODEL),
-                temperature=settings.OPENAI_TEMPERATURE,
-                max_tokens=self._get_max_tokens(messaging_config.get('response_length', 'Medium')),
+                temperature=0.3,  # Lower temperature for more consistent adherence to instructions
+                max_tokens=800,  # Generous limit - let system prompt control length
                 messages=messages,
             )
             return response.choices[0].message.content, False
@@ -389,14 +385,8 @@ class RAGService:
                     context_parts.append(f"From {metadata.get('filename', 'document')}: {doc_text}")
 
         if not context_parts:
-            # Apply response length settings
-            length_instruction = self._get_length_instruction(messaging_config.get('response_length', 'Medium'))
-            conversational_instruction = self._get_conversational_instruction(messaging_config.get('conversational', True))
-            
-            # Create a flexible system prompt that respects messaging config
-            base_system_prompt = self._create_flexible_system_prompt(system_prompt, messaging_config)
-            concise_prompt = base_system_prompt + f"\n\n{conversational_instruction} {length_instruction} No intros."
-            messages: list[dict] = [{"role": "system", "content": concise_prompt}]
+            # SYSTEM PROMPT IS ABSOLUTE - use it exactly as provided
+            messages: list[dict] = [{"role": "system", "content": system_prompt}]
             if history:
                 messages.extend(history)
             messages.append({"role": "user", "content": q})
@@ -404,43 +394,25 @@ class RAGService:
             client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
             response = client.chat.completions.create(
                 model=messaging_config.get('ai_model', settings.OPENAI_MODEL),
-                temperature=settings.OPENAI_TEMPERATURE,
-                max_tokens=self._get_max_tokens(messaging_config.get('response_length', 'Medium')),
+                temperature=0.3,  # Lower temperature for more consistent adherence to instructions
+                max_tokens=800,  # Generous limit - let system prompt control length
                 messages=messages,
             )
             return response.choices[0].message.content, False
 
         context = "\n\n".join(context_parts)
         
-        # Apply strict FAQ mode if enabled
-        strict_faq_instruction = ""
-        if messaging_config.get('strict_faq', True):
-            strict_faq_instruction = (
-                "\n\nSTRICT FAQ MODE: You MUST only answer questions that are directly related to the provided knowledge base content. "
-                "If the user asks about something not covered in the knowledge base, politely say 'I can't help you with that as it's not covered in our knowledge base. "
-                "Please contact our staff for assistance with that question.'"
-            )
-        
-        # Apply response length and conversational settings
-        length_instruction = self._get_length_instruction(messaging_config.get('response_length', 'Medium'))
-        conversational_instruction = self._get_conversational_instruction(messaging_config.get('conversational', True))
-        
-        # Create a flexible system prompt that respects messaging config
-        base_system_prompt = self._create_flexible_system_prompt(system_prompt, messaging_config)
-        
+        # CRITICAL: System prompt comes FIRST and is ABSOLUTE
+        # KB context is supplementary information, NOT override instructions
         rag_system_prompt = (
-            f"{base_system_prompt}\n\n"
-            f"You have access to the following relevant information from the knowledge base:\n\n"
-            f"{context}\n\n"
-            "Instructions:\n"
-            "- Start with the direct answer in one sentence when possible.\n"
-            f"- {conversational_instruction}\n"
-            f"- {length_instruction}\n"
-            "- Avoid generic boilerplate or persona language.\n"
-            "- Use KB info when relevant and mention it's from the KB if helpful.\n"
-            "- If the KB is incomplete, say what's known and what needs staff confirmation.\n"
-            "- Do not fabricate specific company details (pricing, appointments, policies)."
-            f"{strict_faq_instruction}"
+            f"{system_prompt}\n\n"
+            f"===== RELEVANT KNOWLEDGE BASE INFORMATION =====\n"
+            f"{context}\n"
+            f"===== END OF KNOWLEDGE BASE INFORMATION =====\n\n"
+            f"CRITICAL REMINDER: Follow ALL instructions from your core identity above. "
+            f"Use the knowledge base information to enhance your answers, but maintain your communication style, "
+            f"response length, and tone exactly as specified in your core identity. "
+            f"The knowledge base is supplementary data only - your personality and response rules are ABSOLUTE."
         )
 
         messages = [{"role": "system", "content": rag_system_prompt}]
@@ -451,8 +423,8 @@ class RAGService:
         client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
         response = client.chat.completions.create(
             model=messaging_config.get('ai_model', settings.OPENAI_MODEL),
-            temperature=settings.OPENAI_TEMPERATURE,
-            max_tokens=self._get_max_tokens(messaging_config.get('response_length', 'Medium')),
+            temperature=0.3,  # Lower temperature for strict adherence to system prompt
+            max_tokens=800,  # Generous limit - let system prompt control the length
             messages=messages,
         )
         return response.choices[0].message.content, True
@@ -484,78 +456,4 @@ class RAGService:
         """List all documents in the knowledge base."""
         return db.query(KnowledgeDocument).order_by(KnowledgeDocument.upload_date.desc()).all()
     
-    def _get_length_instruction(self, response_length: str) -> str:
-        """Get response length instruction based on setting."""
-        if response_length == 'Short':
-            return "CRITICAL: Write ONLY 1-2 very short sentences. Be extremely brief and direct. No additional details or explanations."
-        elif response_length == 'Long':
-            return "CRITICAL: Write a comprehensive, detailed answer with 4-6 sentences minimum. Include specific details, examples, and thorough explanations. Be informative and complete."
-        else:  # Medium
-            return "CRITICAL: Write 2-3 concise sentences. Be informative but not overly detailed. Provide key information without extensive elaboration."
-    
-    def _get_conversational_instruction(self, conversational: bool) -> str:
-        """Get conversational mode instruction."""
-        if conversational:
-            return "Segment your response into shorter, more readable messages. Break down complex information into digestible parts."
-        else:
-            return "Write a single, comprehensive response without breaking it into segments."
-    
-    def _get_max_tokens(self, response_length: str) -> int:
-        """Get max tokens based on response length setting."""
-        if response_length == 'Short':
-            return 50  # Very restrictive for short responses
-        elif response_length == 'Long':
-            return 1000  # More generous for long responses
-        else:  # Medium
-            return 200  # Moderate for medium responses
-    
-    def _create_flexible_system_prompt(self, system_prompt: str, messaging_config: dict) -> str:
-        """Create a flexible system prompt that respects messaging config settings."""
-        # Extract the core role/company info from the system prompt
-        # but make it flexible based on messaging config
-        
-        # Check if the system prompt is very specific (like the DiPietro one)
-        if "Maximum 1-2 sentences" in system_prompt and "CRITICAL" in system_prompt:
-            # This is a very specific system prompt that overrides messaging config
-            # We need to make it more flexible
-            
-            # Extract the core company info
-            company_info = ""
-            if "DiPietro & Associates" in system_prompt:
-                company_info = "You are a virtual receptionist for DiPietro & Associates, an AED and emergency training company."
-            elif "receptionist" in system_prompt.lower():
-                # Generic receptionist role
-                company_info = "You are a virtual receptionist."
-            else:
-                # Use the first line as company info
-                lines = system_prompt.split('\n')
-                company_info = lines[0] if lines else "You are a helpful assistant."
-            
-            # Create a flexible base prompt
-            base_prompt = f"{company_info}\n\n"
-            
-            # Add flexible communication style based on messaging config
-            if messaging_config.get('conversational', True):
-                base_prompt += "Be conversational and helpful in your responses.\n"
-            else:
-                base_prompt += "Be direct and professional in your responses.\n"
-            
-            # Add response length guidance based on config
-            response_length = messaging_config.get('response_length', 'Medium')
-            if response_length == 'Short':
-                base_prompt += "CRITICAL: Always respond with ONLY 1-2 very short sentences. Be extremely brief and direct.\n"
-            elif response_length == 'Long':
-                base_prompt += "CRITICAL: Always provide detailed, comprehensive responses with 4-6 sentences minimum. Include specific details and examples.\n"
-            else:  # Medium
-                base_prompt += "CRITICAL: Always respond with 2-3 concise sentences. Be informative but not overly detailed.\n"
-            
-            # Add FAQ handling based on config
-            if messaging_config.get('strict_faq', True):
-                base_prompt += "Stick to information you know about. If you don't know something, offer to connect them with someone who can help.\n"
-            else:
-                base_prompt += "Do your best to help with any questions, even if not directly related to your knowledge base.\n"
-            
-            return base_prompt
-        else:
-            # This is a more flexible system prompt, use it as-is
-            return system_prompt
+
