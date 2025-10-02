@@ -107,61 +107,61 @@ export default function Page() {
         const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
         const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY || '';
         
-        // Load bot config
-        try {
-          const botResponse = await fetch(`${API_BASE}/bot-config`, {
+        // PARALLEL LOADING: Load all 3 configs simultaneously for faster initial load
+        const [botData, formData, promptData] = await Promise.all([
+          fetch(`${API_BASE}/bot-config`, {
             headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
-          });
-          if (botResponse.ok) {
-            const botData = await botResponse.json();
-            setBotName(botData.bot_name || 'ChatBot');
-            setOriginalBotName(botData.bot_name || 'ChatBot');
-          }
-        } catch (error) {
-          console.error('Failed to load bot config:', error);
-          setGeneralStatus({message: 'Failed to load bot configuration', type: 'error'});
+          }).then(res => res.ok ? res.json() : null).catch(err => {
+            console.error('Failed to load bot config:', err);
+            setGeneralStatus({message: 'Failed to load bot configuration', type: 'error'});
+            return null;
+          }),
+          
+          fetch(`${API_BASE}/widget-config`, {
+            headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
+          }).then(res => res.ok ? res.json() : null).catch(err => {
+            console.error('Failed to load form config:', err);
+            setUserFormStatus({message: 'Failed to load form configuration', type: 'error'});
+            return null;
+          }),
+          
+          fetch(`${API_BASE}/system-prompt`, {
+            headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
+          }).then(res => res.ok ? res.json() : null).catch(err => {
+            console.error('Failed to load system prompt:', err);
+            return null;
+          })
+        ]);
+        
+        // Process bot config
+        if (botData) {
+          setBotName(botData.bot_name || 'ChatBot');
+          setOriginalBotName(botData.bot_name || 'ChatBot');
         }
         
-        // Load form config
-        try {
-          const formResponse = await fetch(`${API_BASE}/widget-config`, {
-            headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
-          });
-          if (formResponse.ok) {
-            const formData = await formResponse.json();
-            setFormEnabled(formData.form_enabled || false);
-            setOriginalFormEnabled(formData.form_enabled || false);
-            
-            const formFields = formData.fields || [];
-            const processedFields = formFields.map((field: any, index: number) => ({
-              id: `field-${index}`,
-              name: field.name || '',
-              label: field.label || '',
-              type: field.type || 'text',
-              required: field.required || false,
-              placeholder: field.placeholder || '',
-              order: field.order || index
-            }));
-            
-            setFields(processedFields);
-            setOriginalFields(processedFields);
-          }
-        } catch (error) {
-          console.error('Failed to load form config:', error);
-          setUserFormStatus({message: 'Failed to load form configuration', type: 'error'});
+        // Process form config
+        if (formData) {
+          setFormEnabled(formData.form_enabled || false);
+          setOriginalFormEnabled(formData.form_enabled || false);
+          
+          const formFields = formData.fields || [];
+          const processedFields = formFields.map((field: any, index: number) => ({
+            id: `field-${index}`,
+            name: field.name || '',
+            label: field.label || '',
+            type: field.type || 'text',
+            required: field.required || false,
+            placeholder: field.placeholder || '',
+            order: field.order || index
+          }));
+          
+          setFields(processedFields);
+          setOriginalFields(processedFields);
         }
         
-        // Load system prompt
-        try {
-          const promptResponse = await fetch(`${API_BASE}/system-prompt`, {
-            headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
-          });
-          if (promptResponse.ok) {
-            const promptData = await promptResponse.json();
-            setSystemPrompt(promptData.text || '');
-          }
-        } catch (error) {
-          console.error('Failed to load system prompt:', error);
+        // Process system prompt
+        if (promptData) {
+          setSystemPrompt(promptData.text || '');
         }
         
       } finally {

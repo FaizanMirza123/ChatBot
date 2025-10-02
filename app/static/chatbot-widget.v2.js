@@ -855,30 +855,28 @@
   // Form functions removed
   async function refreshConfig(){ 
     try{ 
-      const wc=await api('widget-config'); 
+      // PARALLEL LOADING: Load all 3 configs simultaneously for faster load time
+      const [wc, messagingConfig, starterQuestions] = await Promise.all([
+        api('widget-config').catch(e => { console.warn('Failed to load widget config:', e); return null; }),
+        api('messaging-config').catch(e => { console.warn('Failed to load messaging config:', e); return null; }),
+        api('starter-questions').catch(e => { console.warn('Failed to load starter questions:', e); return null; })
+      ]);
+      
       if(!wc) return;
       
       // Set global widget config
       window.widgetConfig = wc;
       console.log('Widget config loaded:', wc);
       
-      // Load messaging configuration
-      let messagingConfig = null;
-      try {
-        messagingConfig = await api('messaging-config');
+      // Set global messaging config
+      if(messagingConfig) {
         window.messagingConfig = messagingConfig;
-      } catch (e) {
-        console.warn('Failed to load messaging config:', e);
       }
       
-      // Load starter questions configuration
-      let starterQuestions = null;
-      try {
-        starterQuestions = await api('starter-questions');
+      // Set global starter questions
+      if(starterQuestions) {
         window.starterQuestions = starterQuestions;
         console.log('Loaded starter questions:', starterQuestions);
-      } catch (e) {
-        console.warn('Failed to load starter questions:', e);
       } 
       
       // Update primary color
@@ -1010,12 +1008,37 @@
       console.warn('[ChatbotWidget] Failed to refresh config:', e);
     } 
   }
-  (async()=>{ await refreshConfig(); })();
-    let poll=null; function startPoll(){ if(poll) return; poll=setInterval(refreshConfig,20000);} function stopPoll(){ if(poll){ clearInterval(poll); poll=null; }}
-    btn.onclick=async()=>{ 
+  // Pre-load config immediately on page load and cache it
+  let configLoaded = false;
+  let configLoadPromise = null;
+  
+  async function ensureConfigLoaded() {
+    if (configLoaded) return;
+    if (configLoadPromise) return configLoadPromise;
+    
+    configLoadPromise = refreshConfig().then(() => {
+      configLoaded = true;
+      console.log('[ChatbotWidget] Config pre-loaded and cached');
+    }).catch(err => {
+      console.warn('[ChatbotWidget] Config pre-load failed:', err);
+    });
+    
+    return configLoadPromise;
+  }
+  
+  // Pre-load config immediately when script loads
+  (async()=>{ await ensureConfigLoaded(); })();
+  
+  let poll=null; 
+  function startPoll(){ if(poll) return; poll=setInterval(()=>{ refreshConfig().catch(()=>{}); },20000);} 
+  function stopPoll(){ if(poll){ clearInterval(poll); poll=null; }}
+  
+  btn.onclick=async()=>{ 
       const was=panel.classList.contains('open'); 
       if(!was){ 
-        await refreshConfig().catch(()=>{}); 
+        // Ensure config is loaded (should be instant if already cached)
+        await ensureConfigLoaded();
+        
         // Hide welcome tooltip when chat opens
         const existingTooltip = document.querySelector('.cb-welcome-tooltip');
         if(existingTooltip) {
