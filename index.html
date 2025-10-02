@@ -7,14 +7,23 @@
 </head>
 <body>
     <div id="chatbot-widget"></div>
-  <!-- Load the widget JS from your backend origin and point it to that API explicitly -->
-    <script src="https://chatbot.dipietroassociates.com/api/static/chatbot-widget.v2.js?v=20250115-5000133457" data-api-base="https://chatbot.dipietroassociates.com/api/" defer onload=" window.createChatbotWidget({ apiBase: 'https://chatbot.dipietroassociates.com/api/' }); "></script>
-<!-- <script>
-  const widget = createChatbotWidget({
-    apiBase: 'https://chatbot.dipietroassociates.com/api/',
-    title: 'Ask Us',
-    userId: 1 // supply your site user id if you have one
-  });
-</script> -->
+    <!-- Load the widget JS with dynamic cache-busting -->
+    <script>
+        (function() {
+            const timestamp = new Date().getTime();
+            const script = document.createElement('script');
+            script.src = `https://chatbot.dipietroassociates.com/api/static/chatbot-widget.v2.js?v=${timestamp}`;
+            script.setAttribute('data-api-base', 'https://chatbot.dipietroassociates.com/api/');
+            script.defer = true;
+            script.onload = function() {
+                if (window.createChatbotWidget) {
+                    window.createChatbotWidget({ 
+                        apiBase: 'https://chatbot.dipietroassociates.com/api/' 
+                    });
+                }
+            };
+            document.body.appendChild(script);
+        })();
+    </script>
 </body>
 </html>

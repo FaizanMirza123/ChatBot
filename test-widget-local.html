@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local Widget Test - WITH CACHE BUSTING</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #1a202c;
+            margin: 0 0 10px 0;
+            font-size: 32px;
+        }
+        .badge {
+            display: inline-block;
+            background: #48bb78;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+        p {
+            line-height: 1.8;
+            color: #4a5568;
+            font-size: 16px;
+            margin: 16px 0;
+        }
+        .test-section {
+            background: #f7fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .test-section h3 {
+            color: #2d3748;
+            margin: 0 0 12px 0;
+            font-size: 18px;
+        }
+        .test-list {
+            list-style: none;
+            padding: 0;
+            margin: 12px 0;
+        }
+        .test-list li {
+            padding: 8px 0;
+            color: #4a5568;
+            position: relative;
+            padding-left: 24px;
+        }
+        .test-list li:before {
+            content: "✓";
+            color: #48bb78;
+            font-weight: bold;
+            position: absolute;
+            left: 0;
+        }
+        code {
+            background: #edf2f7;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            color: #d53f8c;
+            font-size: 14px;
+        }
+        .info-box {
+            background: #ebf8ff;
+            border-left: 4px solid #4299e1;
+            padding: 16px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .info-box strong {
+            color: #2c5282;
+        }
+        .timestamp {
+            color: #718096;
+            font-size: 12px;
+            text-align: center;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #e2e8f0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 ChatBot Widget Test</h1>
+        <span class="badge">CACHE-BUSTING ENABLED</span>
+        
+        <div class="info-box">
+            <strong>📍 Testing Status:</strong> This page loads the latest widget version with timestamp cache-busting. 
+            Every refresh loads the newest code!
+        </div>
+
+        <p>
+            This is a comprehensive test page for the chatbot widget. The widget appears as a floating button 
+            in the bottom-right corner. Click it to start testing!
+        </p>
+
+        <div class="test-section">
+            <h3>🧪 Features to Test:</h3>
+            <ul class="test-list">
+                <li><strong>Rich Text Formatting:</strong> Links, bold, bullets</li>
+                <li><strong>Phone Numbers:</strong> Click to copy functionality</li>
+                <li><strong>Clickable URLs:</strong> Auto-detection and new tab opening</li>
+                <li><strong>Message Loading:</strong> Smooth loader animation</li>
+                <li><strong>Starter Questions:</strong> Parallel loading performance</li>
+                <li><strong>Form Handling:</strong> User data collection</li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <h3>💬 Try These Test Messages:</h3>
+            <p><code>"What do you guys do and how much does it cost? answer in bullet points"</code></p>
+            <p><code>"Show me your contact information"</code></p>
+            <p><code>"Tell me about your services in **bold** text"</code></p>
+        </div>
+
+        <div class="test-section">
+            <h3>🔗 Expected Formatting Examples:</h3>
+            <ul class="test-list">
+                <li>URLs like <code>https://example.com</code> should be clickable</li>
+                <li>Phone numbers like <code>(530) 477-6818</code> should copy on click</li>
+                <li>Bullet points should display as proper lists</li>
+                <li>Text with <code>**bold**</code> should appear bold</li>
+            </ul>
+        </div>
+
+        <p>
+            Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor 
+            incididunt ut labore et dolore magna aliqua. This extra content helps demonstrate 
+            the widget's behavior on pages with scrollable content.
+        </p>
+
+        <p>
+            Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip 
+            ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit 
+            esse cillum dolore eu fugiat nulla pariatur.
+        </p>
+
+        <div class="timestamp">
+            Last loaded: <span id="load-time"></span>
+        </div>
+    </div>
+
+    <script>
+        // Display current load time
+        document.getElementById('load-time').textContent = new Date().toLocaleString();
+        
+        // Load widget with cache-busting timestamp
+        (function() {
+            console.log('🚀 Loading chatbot widget with cache-busting...');
+            const timestamp = new Date().getTime();
+            const script = document.createElement('script');
+            
+            // Use production server
+            script.src = `https://chatbot.dipietroassociates.com/api/static/chatbot-widget.v2.js?v=${timestamp}`;
+            script.setAttribute('data-api-base', 'https://chatbot.dipietroassociates.com/api/');
+            
+            script.onload = function() {
+                console.log('✅ Widget script loaded successfully!');
+                console.log('⏰ Timestamp:', timestamp);
+                if (window.createChatbotWidget) {
+                    window.createChatbotWidget({ 
+                        apiBase: 'https://chatbot.dipietroassociates.com/api/' 
+                    });
+                    console.log('✅ Widget initialized!');
+                } else {
+                    console.error('❌ createChatbotWidget function not found');
+                }
+            };
+            
+            script.onerror = function() {
+                console.error('❌ Failed to load widget script');
+                alert('Failed to load chatbot widget. Check console for details.');
+            };
+            
+            document.body.appendChild(script);
+        })();
+    </script>
+</body>
+</html>

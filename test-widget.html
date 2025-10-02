@@ -39,6 +39,19 @@
     </div>
 
     <!-- Add this code before the closing </body> tag -->
-    <script src="https://chatbot.dipietroassociates.com/api/static/chatbot-widget.v2.js" data-api-base="https://chatbot.dipietroassociates.com/api/" defer onload="window.createChatbotWidget({ apiBase: 'https://chatbot.dipietroassociates.com/api/' });"></script>
+    <script>
+        // Add cache-busting timestamp to always load latest widget
+        const timestamp = new Date().getTime();
+        const script = document.createElement('script');
+        script.src = `https://chatbot.dipietroassociates.com/api/static/chatbot-widget.v2.js?v=${timestamp}`;
+        script.setAttribute('data-api-base', 'https://chatbot.dipietroassociates.com/api/');
+        script.defer = true;
+        script.onload = function() {
+            if (window.createChatbotWidget) {
+                window.createChatbotWidget({ apiBase: 'https://chatbot.dipietroassociates.com/api/' });
+            }
+        };
+        document.body.appendChild(script);
+    </script>
 </body>
 </html>
