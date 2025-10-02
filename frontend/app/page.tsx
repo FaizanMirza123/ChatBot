@@ -604,9 +604,9 @@ function SettingsView({
   }, []);
 
   return (
-    <div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <h1 className="text-[22px] font-semibold mb-4">Settings</h1>
-      <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-6">
         {/* Left settings nav */}
         <div className="rounded-xl border border-gray-200 p-2 h-fit">
           {([
@@ -1848,7 +1848,7 @@ function Select({value, onChange, options}:{value:string; onChange:(v:string)=>v
 function SourcesView(){
   const [tab, setTab] = useState<'files'|'faqs'>('files');
   return (
-    <div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <h1 className="text-[22px] font-semibold mb-4">Sources</h1>
       {/* Tabs */}
       <div className="border-b border-gray-200">
@@ -2162,7 +2162,7 @@ function SystemPromptView({
   resetSystemPrompt: () => void;
 }) {
   return (
-    <div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-[22px] font-semibold">System Prompt</h1>
@@ -2843,7 +2843,7 @@ function InboxView({
   };
 
   return (
-    <div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-[22px] font-semibold">Inbox</h1>
         <button className="btn btn-ghost">Export all data</button>
@@ -3297,7 +3297,7 @@ function AnalyticsView(){
   }
 
   return (
-    <div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <h1 className="text-[22px] font-semibold mb-4">Analytics</h1>
 
       {/* Controls */}
