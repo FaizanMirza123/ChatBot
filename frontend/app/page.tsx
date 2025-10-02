@@ -604,9 +604,9 @@ function SettingsView({
   }, []);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div>
       <h1 className="text-[22px] font-semibold mb-4">Settings</h1>
-      <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr] gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-6">
         {/* Left settings nav */}
         <div className="rounded-xl border border-gray-200 p-2 h-fit">
           {([
@@ -1848,7 +1848,7 @@ function Select({value, onChange, options}:{value:string; onChange:(v:string)=>v
 function SourcesView(){
   const [tab, setTab] = useState<'files'|'faqs'>('files');
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div>
       <h1 className="text-[22px] font-semibold mb-4">Sources</h1>
       {/* Tabs */}
       <div className="border-b border-gray-200">
@@ -2162,7 +2162,7 @@ function SystemPromptView({
   resetSystemPrompt: () => void;
 }) {
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-[22px] font-semibold">System Prompt</h1>
@@ -2307,47 +2307,47 @@ function ConnectView({
   };
 
   return (
-    <div className="h-full">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div>
+      <h1 className="text-[22px] font-semibold mb-4">Connect</h1>
+      
+      <div className="space-y-6">
         {/* Header */}
-        <div className="text-center mb-6">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Connect Your Chatbot</h1>
-          <p className="text-sm text-gray-600 max-w-2xl mx-auto">
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-2">Connect Your Chatbot</h2>
+          <p className="text-sm text-gray-600">
             Choose how you want to integrate the chatbot into your website. Both methods are easy to implement and fully customizable.
           </p>
         </div>
 
         {/* Tab Navigation */}
-        <div className="mb-4">
-          <div className="bg-white rounded-lg p-1 shadow-sm border border-gray-200 max-w-sm mx-auto">
-            <div className="flex">
-              <button
-                onClick={() => setActiveTab('javascript')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-md font-medium text-xs transition-all duration-200 ${
-                  activeTab === 'javascript'
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                }`}
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                </svg>
-                JavaScript
-              </button>
-              <button
-                onClick={() => setActiveTab('iframe')}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-md font-medium text-xs transition-all duration-200 ${
-                  activeTab === 'iframe'
-                    ? 'bg-green-600 text-white shadow-sm'
-                    : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-                }`}
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
-                </svg>
-                iFrame
-              </button>
-            </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <div className="flex gap-3 max-w-md">
+            <button
+              onClick={() => setActiveTab('javascript')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-md font-medium text-xs transition-all duration-200 ${
+                activeTab === 'javascript'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+              </svg>
+              JavaScript
+            </button>
+            <button
+              onClick={() => setActiveTab('iframe')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-md font-medium text-xs transition-all duration-200 ${
+                activeTab === 'iframe'
+                  ? 'bg-green-600 text-white shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+              </svg>
+              iFrame
+            </button>
           </div>
         </div>
 
@@ -2843,7 +2843,7 @@ function InboxView({
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div>
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-[22px] font-semibold">Inbox</h1>
         <button className="btn btn-ghost">Export all data</button>
@@ -3297,7 +3297,7 @@ function AnalyticsView(){
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div>
       <h1 className="text-[22px] font-semibold mb-4">Analytics</h1>
 
       {/* Controls */}
