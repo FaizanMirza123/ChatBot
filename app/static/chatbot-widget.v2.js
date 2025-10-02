@@ -238,6 +238,23 @@
     }
     .cb-input button:active{transform:scale(0.95)}
     
+    .cb-loader{
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      flex:1;min-height:200px;padding:40px 20px;background:var(--cb-gray-50);
+    }
+    .cb-loader-spinner{
+      width:48px;height:48px;border:4px solid var(--cb-gray-200);
+      border-top-color:var(--cb-primary);border-radius:50%;
+      animation:cb-spin 0.8s linear infinite;
+    }
+    .cb-loader-text{
+      margin-top:16px;font-size:14px;color:var(--cb-gray-600);
+      font-weight:500;
+    }
+    @keyframes cb-spin{
+      to{transform:rotate(360deg);}
+    }
+    
     .cb-branding{
       padding:12px 20px;font-size:12px;color:var(--cb-gray-400);
       text-align:center;border-top:1px solid var(--cb-gray-200);
@@ -805,19 +822,34 @@
     formScreen.style.display = 'none';
     starterScreen.style.display = 'none';
     
-    // Load messages before showing chat (prevents blink)
-    try {
-      await loadMessages();
-    } catch(e) {
-      console.error('Failed to load messages:', e);
-    }
-    
-    // Show chat after messages are loaded
+    // Show chat with loader
     chatWrapper.style.display = 'flex';
     chatWrapper.style.opacity = '1';
     chatWrapper.style.transform = 'none';
     chatWrapper.style.visibility = 'visible';
     chatWrapper.style.position = 'relative';
+    
+    // Show loader in messages area
+    const loader = document.createElement('div');
+    loader.className = 'cb-loader';
+    loader.innerHTML = '<div class="cb-loader-spinner"></div><div class="cb-loader-text">Loading messages...</div>';
+    messages.innerHTML = '';
+    messages.appendChild(loader);
+    
+    // Load messages
+    try {
+      await loadMessages();
+      // Remove loader after messages are loaded
+      if(loader.parentNode) {
+        loader.remove();
+      }
+    } catch(e) {
+      console.error('Failed to load messages:', e);
+      // Remove loader even on error
+      if(loader.parentNode) {
+        loader.remove();
+      }
+    }
     
     console.log('chatWrapper display after:', chatWrapper.style.display);
     console.log('chatWrapper computed style:', window.getComputedStyle(chatWrapper).display);
