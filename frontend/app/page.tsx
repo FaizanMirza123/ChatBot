@@ -93,6 +93,9 @@ export default function Page() {
   const [userFormIsSaving, setUserFormIsSaving] = useState<boolean>(false);
   const [userFormStatus, setUserFormStatus] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   
+  // Settings Appearance state (for avatar)
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  
   // Load all configs on mount
   useEffect(() => {
     if (dataLoaded) return; // Don't reload if data is already loaded
@@ -139,10 +142,15 @@ export default function Page() {
           setOriginalBotName(botData.bot_name || 'ChatBot');
         }
         
-        // Process form config
+        // Process form config (widget-config includes avatar_url)
         if (formData) {
           setFormEnabled(formData.form_enabled || false);
           setOriginalFormEnabled(formData.form_enabled || false);
+          
+          // Load avatar URL if exists
+          if (formData.avatar_url) {
+            setAvatarUrl(formData.avatar_url);
+          }
           
           const formFields = formData.fields || [];
           const processedFields = formFields.map((field: any, index: number) => ({
@@ -957,7 +965,12 @@ const SettingsAppearance = forwardRef<{saveWidgetConfig: () => void, discardChan
       </div>
 
       <div className="space-y-2">
-        <UploadField label="Bot Avatar" hint="Chatbot Picture to be displayed in the chatbot" />
+        <UploadField 
+          label="Bot Avatar" 
+          hint="Chatbot Picture to be displayed in the chatbot" 
+          initialUrl={avatarUrl}
+          onUploadSuccess={(url) => setAvatarUrl(url)}
+        />
       </div>
 
       <div className="space-y-3">
@@ -1095,13 +1108,20 @@ const SettingsAppearance = forwardRef<{saveWidgetConfig: () => void, discardChan
   );
 });
 
-function UploadField({label, hint, type = 'avatar'}:{label:string; hint:string; type?: 'avatar'}){
+function UploadField({label, hint, type = 'avatar', initialUrl = null, onUploadSuccess}:{label:string; hint:string; type?: 'avatar'; initialUrl?: string | null; onUploadSuccess?: (url: string) => void}){
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
+  const [uploadedUrl, setUploadedUrl] = useState<string | null>(initialUrl);
   const [status, setStatus] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   
   const API_BASE = useMemo(()=> (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, ''), []);
   const ADMIN_KEY = useMemo(()=> process.env.NEXT_PUBLIC_ADMIN_API_KEY || '', []);
+  
+  // Update when initialUrl changes (loaded from config)
+  useEffect(() => {
+    if (initialUrl) {
+      setUploadedUrl(initialUrl);
+    }
+  }, [initialUrl]);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -1138,6 +1158,10 @@ function UploadField({label, hint, type = 'avatar'}:{label:string; hint:string; 
         const data = await response.json();
         setUploadedUrl(data.url);
         setStatus({message: 'File uploaded successfully!', type: 'success'});
+        // Notify parent component of successful upload
+        if (onUploadSuccess) {
+          onUploadSuccess(data.url);
+        }
       } else {
         const errorData = await response.json().catch(() => ({}));
         setStatus({message: `Upload failed: ${errorData.detail || response.statusText}`, type: 'error'});
@@ -2289,7 +2313,7 @@ function ConnectView({
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+    <div className="min-h-screen">
       <div className="max-w-6xl mx-auto px-6 py-8">
         {/* Header */}
         <div className="text-center mb-6">
