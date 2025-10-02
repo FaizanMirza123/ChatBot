@@ -3320,13 +3320,7 @@ function AnalyticsView(){
           >
             {exporting ? 'Exporting...' : 'Export CSV'}
           </button>
-          <button 
-            className="btn btn-primary text-xs" 
-            onClick={() => handleExport('json')}
-            disabled={exporting}
-          >
-            {exporting ? 'Exporting...' : 'Export JSON'}
-          </button>
+          
         </div>
       </div>
 
