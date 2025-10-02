@@ -42,23 +42,15 @@
     
     <div id="chatbot-widget-root"></div>
     
+    <script src="/api/static/chatbot-widget.v2.js" data-api-base="/api/"></script>
     <script>
-        // Add cache-busting timestamp to always load latest widget
-        const timestamp = new Date().getTime();
-        const script = document.createElement('script');
-        script.src = `/api/static/chatbot-widget.v2.js?v=${timestamp}`;
-        script.setAttribute('data-api-base', '/api/');
-        script.onload = function() {
+        document.addEventListener('DOMContentLoaded', function() {
             if (window.createChatbotWidget) {
                 window.createChatbotWidget({ apiBase: '/api/' });
             } else {
                 console.error('Chatbot widget script not loaded');
             }
-        };
-        script.onerror = function() {
-            console.error('Failed to load chatbot widget script');
-        };
-        document.body.appendChild(script);
+        });
     </script>
 </body>
 </html>
