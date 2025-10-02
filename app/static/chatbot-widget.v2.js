@@ -795,23 +795,27 @@
     console.log('starterScreen computed display:', window.getComputedStyle(starterScreen).display);
   }
   
-  function showChatScreen() {
+  async function showChatScreen() {
     console.log('=== SHOWING CHAT SCREEN ===');
     console.log('formScreen display:', formScreen.style.display);
     console.log('starterScreen display:', starterScreen.style.display);
     console.log('chatWrapper display before:', chatWrapper.style.display);
     
-    // Load messages first
-    loadMessages().catch(e => console.error('Failed to load messages:', e));
-    
-    // Instant transition (no animation)
+    // Hide other screens first
     formScreen.style.display = 'none';
     starterScreen.style.display = 'none';
+    
+    // Load messages before showing chat (prevents blink)
+    try {
+      await loadMessages();
+    } catch(e) {
+      console.error('Failed to load messages:', e);
+    }
+    
+    // Show chat after messages are loaded
     chatWrapper.style.display = 'flex';
     chatWrapper.style.opacity = '1';
     chatWrapper.style.transform = 'none';
-    
-    // Force visibility
     chatWrapper.style.visibility = 'visible';
     chatWrapper.style.position = 'relative';
     
