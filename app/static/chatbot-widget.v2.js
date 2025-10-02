@@ -205,7 +205,51 @@
       flex:1;background:#fff;padding:12px 16px;
       border-radius:18px 18px 18px 4px;
       box-shadow:var(--cb-shadow);border:1px solid var(--cb-primary);
-      margin-top:4px;
+      margin-top:4px;word-wrap:break-word;line-height:1.6;
+    }
+    .cb-message.assistant .cb-msg-text a{
+      color:var(--cb-primary);text-decoration:underline;
+      font-weight:500;cursor:pointer;
+    }
+    .cb-message.assistant .cb-msg-text a:hover{
+      color:var(--cb-primary-dark);
+    }
+    .cb-message.assistant .cb-msg-text .cb-phone{
+      color:var(--cb-primary);font-weight:500;
+      cursor:pointer;text-decoration:none;
+      padding:2px 6px;border-radius:4px;
+      background:var(--cb-primary-light);transition:all 0.2s ease;
+    }
+    .cb-message.assistant .cb-msg-text .cb-phone:hover{
+      background:var(--cb-primary);color:#fff;
+    }
+    .cb-message.assistant .cb-msg-text ul,
+    .cb-message.assistant .cb-msg-text ol{
+      margin:8px 0;padding-left:20px;
+    }
+    .cb-message.assistant .cb-msg-text li{
+      margin:4px 0;
+    }
+    .cb-message.assistant .cb-msg-text strong,
+    .cb-message.assistant .cb-msg-text b{
+      font-weight:700;color:var(--cb-gray-900);
+    }
+    .cb-message.assistant .cb-msg-text em,
+    .cb-message.assistant .cb-msg-text i{
+      font-style:italic;
+    }
+    .cb-message.assistant .cb-msg-text code{
+      background:var(--cb-gray-100);padding:2px 6px;
+      border-radius:4px;font-family:monospace;font-size:0.9em;
+    }
+    .cb-message.assistant .cb-msg-text p{
+      margin:8px 0;
+    }
+    .cb-message.assistant .cb-msg-text p:first-child{
+      margin-top:0;
+    }
+    .cb-message.assistant .cb-msg-text p:last-child{
+      margin-bottom:0;
     }
     
     .cb-input{
@@ -291,15 +335,82 @@
       if(res.status===404 && !/\/api\//.test(url)){ const apiUrl=url.replace(/(https?:\/\/[^/]+)(\/.*)?/, (m,origin,rest)=> origin + '/api' + (rest||'')); const r2=await fetch(apiUrl,Object.assign({mode:'cors'},o)); if(r2.ok) return r2.status===204? null : await r2.json(); }
       throw new Error((await res.text().catch(()=>''))||('HTTP '+res.status));
     }
+    // Format text with links, phone numbers, markdown, etc.
+    function formatMessageContent(text) {
+      if (!text) return '';
+      
+      let html = text;
+      
+      // Convert **bold** to <strong>
+      html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      
+      // Convert *italic* to <em>
+      html = html.replace(/(?<!\*)\*([^*]+?)\*(?!\*)/g, '<em>$1</em>');
+      
+      // Convert `code` to <code>
+      html = html.replace(/`(.+?)`/g, '<code>$1</code>');
+      
+      // Convert bullet points (-, *, •) to proper list
+      const lines = html.split('\n');
+      let inList = false;
+      let formattedLines = [];
+      
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const bulletMatch = line.match(/^\s*[-*•]\s+(.+)$/);
+        
+        if (bulletMatch) {
+          if (!inList) {
+            formattedLines.push('<ul>');
+            inList = true;
+          }
+          formattedLines.push('<li>' + bulletMatch[1] + '</li>');
+        } else {
+          if (inList) {
+            formattedLines.push('</ul>');
+            inList = false;
+          }
+          if (line.trim()) {
+            formattedLines.push('<p>' + line + '</p>');
+          }
+        }
+      }
+      
+      if (inList) {
+        formattedLines.push('</ul>');
+      }
+      
+      html = formattedLines.join('');
+      
+      // Convert URLs to clickable links
+      html = html.replace(
+        /(https?:\/\/[^\s<]+[^\s<.,:;"')\]}>])/gi,
+        '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
+      );
+      
+      // Convert phone numbers to clickable (copy on click)
+      html = html.replace(
+        /\b(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g,
+        function(match) {
+          const cleanPhone = match.replace(/[^\d+]/g, '');
+          return '<span class="cb-phone" data-phone="' + cleanPhone + '" onclick="navigator.clipboard.writeText(\'' + cleanPhone + '\');this.textContent=\'Copied!\';setTimeout(()=>this.textContent=\'' + match + '\',1500);">' + match + '</span>';
+        }
+      );
+      
+      return html;
+    }
+    
     function addMessage(role,content){
       if(role==='assistant'){
         const m=el('div','cb-message assistant');
         const av=document.createElement('img'); av.className='cb-msg-avatar'; av.src=botAvatarUrl||DEFAULT_AVATAR; av.alt='';
-        const t=el('div','cb-msg-text',content);
+        const t=el('div','cb-msg-text');
+        t.innerHTML = formatMessageContent(content);
         m.appendChild(av); m.appendChild(t);
         messages.appendChild(m);
       } else {
-        const m=el('div','cb-message '+role,content);
+        const m=el('div','cb-message '+role);
+        m.textContent = content;
         messages.appendChild(m);
       }
       messages.scrollTop=messages.scrollHeight;
