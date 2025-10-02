@@ -93,9 +93,6 @@ export default function Page() {
   const [userFormIsSaving, setUserFormIsSaving] = useState<boolean>(false);
   const [userFormStatus, setUserFormStatus] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   
-  // Settings Appearance state (for avatar)
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  
   // Load all configs on mount
   useEffect(() => {
     if (dataLoaded) return; // Don't reload if data is already loaded
@@ -142,15 +139,10 @@ export default function Page() {
           setOriginalBotName(botData.bot_name || 'ChatBot');
         }
         
-        // Process form config (widget-config includes avatar_url)
+        // Process form config
         if (formData) {
           setFormEnabled(formData.form_enabled || false);
           setOriginalFormEnabled(formData.form_enabled || false);
-          
-          // Load avatar URL if exists
-          if (formData.avatar_url) {
-            setAvatarUrl(formData.avatar_url);
-          }
           
           const formFields = formData.fields || [];
           const processedFields = formFields.map((field: any, index: number) => ({
@@ -811,6 +803,7 @@ const SettingsAppearance = forwardRef<{saveWidgetConfig: () => void, discardChan
   const [starterQuestions, setStarterQuestions] = useState<boolean>(true);
   const [subheading, setSubheading] = useState<string>('Our bot answers instantly');
   const [inputPlaceholder, setInputPlaceholder] = useState<string>('Type your message...');
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [status, setStatus] = useState<{message: string, type: 'success' | 'error'} | null>(null);
@@ -840,6 +833,7 @@ const SettingsAppearance = forwardRef<{saveWidgetConfig: () => void, discardChan
           setShowBranding(data.show_branding ?? true);
           setOpenByDefault(data.open_by_default ?? false);
           setStarterQuestions(data.starter_questions ?? true);
+          setAvatarUrl(data.avatar_url || null);
         }
       } catch (error) {
         console.error('Failed to load widget config:', error);
