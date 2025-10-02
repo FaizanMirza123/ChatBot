@@ -339,18 +339,34 @@
     function formatMessageContent(text) {
       if (!text) return '';
       
-      let html = text;
+      let html = String(text);
       
+      // STEP 1: Apply inline formatting FIRST (before splitting lines)
       // Convert **bold** to <strong>
-      html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      html = html.replace(/\*\*([^\*]+?)\*\*/g, '<strong>$1</strong>');
       
-      // Convert *italic* to <em>
-      html = html.replace(/(?<!\*)\*([^*]+?)\*(?!\*)/g, '<em>$1</em>');
+      // Convert *italic* to <em> (but not if part of **)
+      html = html.replace(/(?<!\*)\*([^\*\n]+?)\*(?!\*)/g, '<em>$1</em>');
       
       // Convert `code` to <code>
-      html = html.replace(/`(.+?)`/g, '<code>$1</code>');
+      html = html.replace(/`([^`]+?)`/g, '<code>$1</code>');
       
-      // Convert bullet points (-, *, •) to proper list
+      // STEP 2: Convert URLs to clickable links
+      html = html.replace(
+        /(https?:\/\/[^\s<]+[^\s<.,:;"')\]}>])/gi,
+        '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
+      );
+      
+      // STEP 3: Convert phone numbers to clickable (copy on click)
+      html = html.replace(
+        /\b(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g,
+        function(match) {
+          const cleanPhone = match.replace(/[^\d+]/g, '');
+          return '<span class="cb-phone" data-phone="' + cleanPhone + '" onclick="navigator.clipboard.writeText(\'' + cleanPhone + '\');this.textContent=\'Copied!\';setTimeout(()=>this.textContent=\'' + match + '\',1500);">' + match + '</span>';
+        }
+      );
+      
+      // STEP 4: Handle line breaks and bullet points
       const lines = html.split('\n');
       let inList = false;
       let formattedLines = [];
@@ -381,21 +397,6 @@
       }
       
       html = formattedLines.join('');
-      
-      // Convert URLs to clickable links
-      html = html.replace(
-        /(https?:\/\/[^\s<]+[^\s<.,:;"')\]}>])/gi,
-        '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
-      );
-      
-      // Convert phone numbers to clickable (copy on click)
-      html = html.replace(
-        /\b(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g,
-        function(match) {
-          const cleanPhone = match.replace(/[^\d+]/g, '');
-          return '<span class="cb-phone" data-phone="' + cleanPhone + '" onclick="navigator.clipboard.writeText(\'' + cleanPhone + '\');this.textContent=\'Copied!\';setTimeout(()=>this.textContent=\'' + match + '\',1500);">' + match + '</span>';
-        }
-      );
       
       return html;
     }
