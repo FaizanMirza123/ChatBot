@@ -2849,11 +2849,6 @@ function InboxView({
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-[22px] font-semibold">Inbox</h1>
-        <button className="btn btn-ghost">Export all data</button>
-      </div>
-
       <div className="mb-6 inline-flex bg-white rounded-xl border border-gray-200 shadow-sm p-1">
         <button 
           onClick={()=>setTab('chats')} 
