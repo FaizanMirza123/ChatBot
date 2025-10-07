@@ -2,19 +2,27 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export function middleware(request: NextRequest) {
-  // Check if user is trying to access the main page without being logged in
-  if (request.nextUrl.pathname === '/') {
-    const token = request.cookies.get('admin_token')?.value || 
-                  request.headers.get('authorization')?.replace('Bearer ', '');
-    
-    // If no token, redirect to login
+  const path = request.nextUrl.pathname;
+  const token = request.cookies.get('admin_token')?.value ||
+                request.headers.get('authorization')?.replace('Bearer ', '') || '';
+
+  // If visiting the dashboard root
+  if (path === '/') {
+    // Not logged in -> redirect to /login
     if (!token) {
       return NextResponse.redirect(new URL('/login', request.url));
     }
+    // Logged in -> allow
+    return NextResponse.next();
   }
 
-  // Allow access to login page
-  if (request.nextUrl.pathname === '/login') {
+  // If visiting the login page
+  if (path === '/login') {
+    // Logged in -> redirect to dashboard
+    if (token) {
+      return NextResponse.redirect(new URL('/', request.url));
+    }
+    // Not logged in -> allow
     return NextResponse.next();
   }
 
