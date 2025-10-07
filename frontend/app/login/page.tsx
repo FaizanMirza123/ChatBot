@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Script from 'next/script';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -95,6 +96,20 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+      {/* Instant redirect when already authenticated (runs before React hydration) */}
+      <Script id="auth-redirect" strategy="beforeInteractive">{`
+        (function(){
+          try {
+            var p = window.location.pathname;
+            var sp = new URLSearchParams(window.location.search||'');
+            var isLogout = sp.get('logout');
+            var t = localStorage.getItem('admin_token');
+            if (p === '/login' && !isLogout && t) {
+              window.location.replace('/');
+            }
+          } catch (_) {}
+        })();
+      `}</Script>
       <div className="max-w-md w-full space-y-8">
         <div>
           <div className="mx-auto h-12 w-12 flex items-center justify-center rounded-full bg-primary-500">
