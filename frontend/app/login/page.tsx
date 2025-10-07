@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -9,6 +9,25 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Handle direct visits to /login while authenticated and support ?logout=1
+  useEffect(() => {
+    const isLogout = searchParams?.get('logout');
+    if (isLogout) {
+      // Explicit logout request via query flag
+      try { localStorage.removeItem('admin_token'); } catch (_) {}
+      // Stay on login page, user can sign in again
+      return;
+    }
+    // If already authenticated, avoid showing the login page
+    try {
+      const token = localStorage.getItem('admin_token');
+      if (token) {
+        router.replace('/');
+      }
+    } catch (_) {}
+  }, [searchParams, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -21,10 +21,15 @@ export default function Page() {
     }
   }, [router]);
 
-  // Logout function
+  // Logout function (hard redirect to ensure route transitions even if already on /login)
   const handleLogout = () => {
-    localStorage.removeItem('admin_token');
-    router.push('/login');
+    try { localStorage.removeItem('admin_token'); } catch (_) {}
+    if (typeof window !== 'undefined') {
+      // Use a query flag so /login knows to clear any residual state
+      window.location.href = '/login?logout=1';
+    } else {
+      router.replace('/login?logout=1');
+    }
   };
   
   // Lift state up to persist across section switches
