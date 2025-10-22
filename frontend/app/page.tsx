@@ -98,6 +98,77 @@ export default function Page() {
   const [userFormIsSaving, setUserFormIsSaving] = useState<boolean>(false);
   const [userFormStatus, setUserFormStatus] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   
+  // Settings Appearance state
+  const [appearanceConfig, setAppearanceConfig] = useState<{
+    color: string;
+    widgetIcon: string;
+    position: 'left' | 'right';
+    subheading: string;
+    inputPlaceholder: string;
+    showBranding: boolean;
+    openByDefault: boolean;
+    starterQuestions: boolean;
+    avatarUrl: string | null;
+  }>({
+    color: '#6b4eff',
+    widgetIcon: '💬',
+    position: 'right',
+    subheading: 'Our bot answers instantly',
+    inputPlaceholder: 'Type your message...',
+    showBranding: true,
+    openByDefault: false,
+    starterQuestions: true,
+    avatarUrl: null
+  });
+  const [originalAppearanceConfig, setOriginalAppearanceConfig] = useState(appearanceConfig);
+  const [appearanceIsLoading, setAppearanceIsLoading] = useState<boolean>(true);
+  const [appearanceIsSaving, setAppearanceIsSaving] = useState<boolean>(false);
+  const [appearanceStatus, setAppearanceStatus] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+  
+  // Settings Messaging state
+  const [messagingConfig, setMessagingConfig] = useState<{
+    aiModel: string;
+    conversational: boolean;
+    strictFaq: boolean;
+    responseLength: 'Short' | 'Medium' | 'Long';
+    suggestFollowups: boolean;
+    allowImages: boolean;
+    showSources: boolean;
+    postFeedback: boolean;
+    multilingual: boolean;
+    showWelcome: boolean;
+    welcomeMessage: string;
+    noSourceMessage: string;
+    serverErrorMessage: string;
+  }>({
+    aiModel: 'gpt-4o',
+    conversational: true,
+    strictFaq: true,
+    responseLength: 'Medium',
+    suggestFollowups: false,
+    allowImages: false,
+    showSources: true,
+    postFeedback: true,
+    multilingual: true,
+    showWelcome: true,
+    welcomeMessage: 'Hey there, how can I help you?',
+    noSourceMessage: 'The bot is yet to be trained, please add the data and train the bot.',
+    serverErrorMessage: 'Apologies, there seems to be a server error.'
+  });
+  const [originalMessagingConfig, setOriginalMessagingConfig] = useState(messagingConfig);
+  const [messagingIsLoading, setMessagingIsLoading] = useState<boolean>(true);
+  const [messagingIsSaving, setMessagingIsSaving] = useState<boolean>(false);
+  const [messagingStatus, setMessagingStatus] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+  
+  // Settings Starter Questions state
+  const [starterQuestions, setStarterQuestions] = useState<string[]>([]);
+  const [starterEnabled, setStarterEnabled] = useState<boolean>(true);
+  const [originalStarterQuestions, setOriginalStarterQuestions] = useState<string[]>([]);
+  const [originalStarterEnabled, setOriginalStarterEnabled] = useState<boolean>(true);
+  const [starterIsLoading, setStarterIsLoading] = useState<boolean>(true);
+  const [starterIsSaving, setStarterIsSaving] = useState<boolean>(false);
+  const [starterStatus, setStarterStatus] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+  
   // Load all configs on mount
   useEffect(() => {
     if (dataLoaded) return; // Don't reload if data is already loaded
@@ -108,12 +179,15 @@ export default function Page() {
         setGeneralIsLoading(true);
         setUserFormIsLoading(true);
         setSystemPromptLoading(true);
+        setAppearanceIsLoading(true);
+        setMessagingIsLoading(true);
+        setStarterIsLoading(true);
         
         const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
         const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY || '';
         
-        // PARALLEL LOADING: Load all 3 configs simultaneously for faster initial load
-        const [botData, formData, promptData] = await Promise.all([
+        // PARALLEL LOADING: Load ALL 6 configs simultaneously for instant tab switching
+        const [botData, formData, promptData, appearanceData, messagingData, starterData] = await Promise.all([
           fetch(`${API_BASE}/bot-config`, {
             headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
           }).then(res => res.ok ? res.json() : null).catch(err => {
@@ -134,6 +208,30 @@ export default function Page() {
             headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
           }).then(res => res.ok ? res.json() : null).catch(err => {
             console.error('Failed to load system prompt:', err);
+            return null;
+          }),
+          
+          fetch(`${API_BASE}/widget-config`, {
+            headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
+          }).then(res => res.ok ? res.json() : null).catch(err => {
+            console.error('Failed to load appearance config:', err);
+            setAppearanceStatus({message: 'Failed to load appearance configuration', type: 'error'});
+            return null;
+          }),
+          
+          fetch(`${API_BASE}/messaging-config`, {
+            headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
+          }).then(res => res.ok ? res.json() : null).catch(err => {
+            console.error('Failed to load messaging config:', err);
+            setMessagingStatus({message: 'Failed to load messaging configuration', type: 'error'});
+            return null;
+          }),
+          
+          fetch(`${API_BASE}/starter-questions`, {
+            headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
+          }).then(res => res.ok ? res.json() : null).catch(err => {
+            console.error('Failed to load starter questions:', err);
+            setStarterStatus({message: 'Failed to load starter questions', type: 'error'});
             return null;
           })
         ]);
@@ -169,11 +267,61 @@ export default function Page() {
           setSystemPrompt(promptData.text || '');
         }
         
+        // Process appearance config
+        if (appearanceData) {
+          const newAppearanceConfig = {
+            color: appearanceData.primary_color || '#6b4eff',
+            widgetIcon: appearanceData.widget_icon || '💬',
+            position: (appearanceData.widget_position || 'right') as 'left' | 'right',
+            subheading: appearanceData.subheading || 'Our bot answers instantly',
+            inputPlaceholder: appearanceData.input_placeholder || 'Type your message...',
+            showBranding: appearanceData.show_branding ?? true,
+            openByDefault: appearanceData.open_by_default ?? false,
+            starterQuestions: appearanceData.starter_questions ?? true,
+            avatarUrl: appearanceData.avatar_url || null
+          };
+          setAppearanceConfig(newAppearanceConfig);
+          setOriginalAppearanceConfig(newAppearanceConfig);
+        }
+        
+        // Process messaging config
+        if (messagingData) {
+          const newMessagingConfig = {
+            aiModel: messagingData.ai_model || 'gpt-4o',
+            conversational: messagingData.conversational ?? true,
+            strictFaq: messagingData.strict_faq ?? true,
+            responseLength: (messagingData.response_length || 'Medium') as 'Short' | 'Medium' | 'Long',
+            suggestFollowups: messagingData.suggest_followups ?? false,
+            allowImages: messagingData.allow_images ?? false,
+            showSources: messagingData.show_sources ?? true,
+            postFeedback: messagingData.post_feedback ?? true,
+            multilingual: messagingData.multilingual ?? true,
+            showWelcome: messagingData.show_welcome ?? true,
+            welcomeMessage: messagingData.welcome_message || 'Hey there, how can I help you?',
+            noSourceMessage: messagingData.no_source_message || 'The bot is yet to be trained, please add the data and train the bot.',
+            serverErrorMessage: messagingData.server_error_message || 'Apologies, there seems to be a server error.'
+          };
+          setMessagingConfig(newMessagingConfig);
+          setOriginalMessagingConfig(newMessagingConfig);
+        }
+        
+        // Process starter questions
+        if (starterData) {
+          const questions = starterData.questions || [];
+          setStarterQuestions(questions);
+          setOriginalStarterQuestions([...questions]);
+          setStarterEnabled(starterData.enabled ?? true);
+          setOriginalStarterEnabled(starterData.enabled ?? true);
+        }
+        
       } finally {
         setInitialLoading(false);
         setGeneralIsLoading(false);
         setUserFormIsLoading(false);
         setSystemPromptLoading(false);
+        setAppearanceIsLoading(false);
+        setMessagingIsLoading(false);
+        setStarterIsLoading(false);
         setDataLoaded(true); // Mark data as loaded
       }
     };
@@ -383,6 +531,43 @@ export default function Page() {
               setUserFormIsSaving={setUserFormIsSaving}
               userFormStatus={userFormStatus}
               setUserFormStatus={setUserFormStatus}
+              // Appearance state
+              appearanceConfig={appearanceConfig}
+              setAppearanceConfig={setAppearanceConfig}
+              originalAppearanceConfig={originalAppearanceConfig}
+              setOriginalAppearanceConfig={setOriginalAppearanceConfig}
+              appearanceIsLoading={appearanceIsLoading}
+              setAppearanceIsLoading={setAppearanceIsLoading}
+              appearanceIsSaving={appearanceIsSaving}
+              setAppearanceIsSaving={setAppearanceIsSaving}
+              appearanceStatus={appearanceStatus}
+              setAppearanceStatus={setAppearanceStatus}
+              // Messaging state
+              messagingConfig={messagingConfig}
+              setMessagingConfig={setMessagingConfig}
+              originalMessagingConfig={originalMessagingConfig}
+              setOriginalMessagingConfig={setOriginalMessagingConfig}
+              messagingIsLoading={messagingIsLoading}
+              setMessagingIsLoading={setMessagingIsLoading}
+              messagingIsSaving={messagingIsSaving}
+              setMessagingIsSaving={setMessagingIsSaving}
+              messagingStatus={messagingStatus}
+              setMessagingStatus={setMessagingStatus}
+              // Starter Questions state
+              starterQuestions={starterQuestions}
+              setStarterQuestions={setStarterQuestions}
+              starterEnabled={starterEnabled}
+              setStarterEnabled={setStarterEnabled}
+              originalStarterQuestions={originalStarterQuestions}
+              setOriginalStarterQuestions={setOriginalStarterQuestions}
+              originalStarterEnabled={originalStarterEnabled}
+              setOriginalStarterEnabled={setOriginalStarterEnabled}
+              starterIsLoading={starterIsLoading}
+              setStarterIsLoading={setStarterIsLoading}
+              starterIsSaving={starterIsSaving}
+              setStarterIsSaving={setStarterIsSaving}
+              starterStatus={starterStatus}
+              setStarterStatus={setStarterStatus}
             />
           ) : selectedMain==='connect' ? (
             <ConnectView 
@@ -454,6 +639,43 @@ export default function Page() {
               setUserFormIsSaving={setUserFormIsSaving}
               userFormStatus={userFormStatus}
               setUserFormStatus={setUserFormStatus}
+              // Appearance state
+              appearanceConfig={appearanceConfig}
+              setAppearanceConfig={setAppearanceConfig}
+              originalAppearanceConfig={originalAppearanceConfig}
+              setOriginalAppearanceConfig={setOriginalAppearanceConfig}
+              appearanceIsLoading={appearanceIsLoading}
+              setAppearanceIsLoading={setAppearanceIsLoading}
+              appearanceIsSaving={appearanceIsSaving}
+              setAppearanceIsSaving={setAppearanceIsSaving}
+              appearanceStatus={appearanceStatus}
+              setAppearanceStatus={setAppearanceStatus}
+              // Messaging state
+              messagingConfig={messagingConfig}
+              setMessagingConfig={setMessagingConfig}
+              originalMessagingConfig={originalMessagingConfig}
+              setOriginalMessagingConfig={setOriginalMessagingConfig}
+              messagingIsLoading={messagingIsLoading}
+              setMessagingIsLoading={setMessagingIsLoading}
+              messagingIsSaving={messagingIsSaving}
+              setMessagingIsSaving={setMessagingIsSaving}
+              messagingStatus={messagingStatus}
+              setMessagingStatus={setMessagingStatus}
+              // Starter Questions state
+              starterQuestions={starterQuestions}
+              setStarterQuestions={setStarterQuestions}
+              starterEnabled={starterEnabled}
+              setStarterEnabled={setStarterEnabled}
+              originalStarterQuestions={originalStarterQuestions}
+              setOriginalStarterQuestions={setOriginalStarterQuestions}
+              originalStarterEnabled={originalStarterEnabled}
+              setOriginalStarterEnabled={setOriginalStarterEnabled}
+              starterIsLoading={starterIsLoading}
+              setStarterIsLoading={setStarterIsLoading}
+              starterIsSaving={starterIsSaving}
+              setStarterIsSaving={setStarterIsSaving}
+              starterStatus={starterStatus}
+              setStarterStatus={setStarterStatus}
             />
           )}
         </div>
@@ -471,7 +693,20 @@ function SettingsView({
   // User Form state
   formEnabled, setFormEnabled, originalFormEnabled, setOriginalFormEnabled, fields, setFields,
   originalFields, setOriginalFields, userFormIsLoading, setUserFormIsLoading,
-  userFormIsSaving, setUserFormIsSaving, userFormStatus, setUserFormStatus
+  userFormIsSaving, setUserFormIsSaving, userFormStatus, setUserFormStatus,
+  // Appearance state
+  appearanceConfig, setAppearanceConfig, originalAppearanceConfig, setOriginalAppearanceConfig,
+  appearanceIsLoading, setAppearanceIsLoading, appearanceIsSaving, setAppearanceIsSaving,
+  appearanceStatus, setAppearanceStatus,
+  // Messaging state
+  messagingConfig, setMessagingConfig, originalMessagingConfig, setOriginalMessagingConfig,
+  messagingIsLoading, setMessagingIsLoading, messagingIsSaving, setMessagingIsSaving,
+  messagingStatus, setMessagingStatus,
+  // Starter Questions state
+  starterQuestions, setStarterQuestions, starterEnabled, setStarterEnabled,
+  originalStarterQuestions, setOriginalStarterQuestions, originalStarterEnabled, setOriginalStarterEnabled,
+  starterIsLoading, setStarterIsLoading, starterIsSaving, setStarterIsSaving,
+  starterStatus, setStarterStatus
 }: {
   tab: 'general'|'appearance'|'messaging'|'starter'|'user';
   setTab: (tab: 'general'|'appearance'|'messaging'|'starter'|'user') => void;
@@ -543,6 +778,139 @@ function SettingsView({
   setUserFormIsSaving: (saving: boolean) => void;
   userFormStatus: {message: string, type: 'success' | 'error'} | null;
   setUserFormStatus: (status: {message: string, type: 'success' | 'error'} | null) => void;
+  // Appearance state props
+  appearanceConfig: {
+    color: string;
+    widgetIcon: string;
+    position: 'left' | 'right';
+    subheading: string;
+    inputPlaceholder: string;
+    showBranding: boolean;
+    openByDefault: boolean;
+    starterQuestions: boolean;
+    avatarUrl: string | null;
+  };
+  setAppearanceConfig: (config: {
+    color: string;
+    widgetIcon: string;
+    position: 'left' | 'right';
+    subheading: string;
+    inputPlaceholder: string;
+    showBranding: boolean;
+    openByDefault: boolean;
+    starterQuestions: boolean;
+    avatarUrl: string | null;
+  }) => void;
+  originalAppearanceConfig: {
+    color: string;
+    widgetIcon: string;
+    position: 'left' | 'right';
+    subheading: string;
+    inputPlaceholder: string;
+    showBranding: boolean;
+    openByDefault: boolean;
+    starterQuestions: boolean;
+    avatarUrl: string | null;
+  };
+  setOriginalAppearanceConfig: (config: {
+    color: string;
+    widgetIcon: string;
+    position: 'left' | 'right';
+    subheading: string;
+    inputPlaceholder: string;
+    showBranding: boolean;
+    openByDefault: boolean;
+    starterQuestions: boolean;
+    avatarUrl: string | null;
+  }) => void;
+  appearanceIsLoading: boolean;
+  setAppearanceIsLoading: (loading: boolean) => void;
+  appearanceIsSaving: boolean;
+  setAppearanceIsSaving: (saving: boolean) => void;
+  appearanceStatus: {message: string, type: 'success' | 'error'} | null;
+  setAppearanceStatus: (status: {message: string, type: 'success' | 'error'} | null) => void;
+  // Messaging state props
+  messagingConfig: {
+    aiModel: string;
+    conversational: boolean;
+    strictFaq: boolean;
+    responseLength: 'Short' | 'Medium' | 'Long';
+    suggestFollowups: boolean;
+    allowImages: boolean;
+    showSources: boolean;
+    postFeedback: boolean;
+    multilingual: boolean;
+    showWelcome: boolean;
+    welcomeMessage: string;
+    noSourceMessage: string;
+    serverErrorMessage: string;
+  };
+  setMessagingConfig: (config: {
+    aiModel: string;
+    conversational: boolean;
+    strictFaq: boolean;
+    responseLength: 'Short' | 'Medium' | 'Long';
+    suggestFollowups: boolean;
+    allowImages: boolean;
+    showSources: boolean;
+    postFeedback: boolean;
+    multilingual: boolean;
+    showWelcome: boolean;
+    welcomeMessage: string;
+    noSourceMessage: string;
+    serverErrorMessage: string;
+  }) => void;
+  originalMessagingConfig: {
+    aiModel: string;
+    conversational: boolean;
+    strictFaq: boolean;
+    responseLength: 'Short' | 'Medium' | 'Long';
+    suggestFollowups: boolean;
+    allowImages: boolean;
+    showSources: boolean;
+    postFeedback: boolean;
+    multilingual: boolean;
+    showWelcome: boolean;
+    welcomeMessage: string;
+    noSourceMessage: string;
+    serverErrorMessage: string;
+  };
+  setOriginalMessagingConfig: (config: {
+    aiModel: string;
+    conversational: boolean;
+    strictFaq: boolean;
+    responseLength: 'Short' | 'Medium' | 'Long';
+    suggestFollowups: boolean;
+    allowImages: boolean;
+    showSources: boolean;
+    postFeedback: boolean;
+    multilingual: boolean;
+    showWelcome: boolean;
+    welcomeMessage: string;
+    noSourceMessage: string;
+    serverErrorMessage: string;
+  }) => void;
+  messagingIsLoading: boolean;
+  setMessagingIsLoading: (loading: boolean) => void;
+  messagingIsSaving: boolean;
+  setMessagingIsSaving: (saving: boolean) => void;
+  messagingStatus: {message: string, type: 'success' | 'error'} | null;
+  setMessagingStatus: (status: {message: string, type: 'success' | 'error'} | null) => void;
+  // Starter Questions state props
+  starterQuestions: string[];
+  setStarterQuestions: (questions: string[]) => void;
+  starterEnabled: boolean;
+  setStarterEnabled: (enabled: boolean) => void;
+  originalStarterQuestions: string[];
+  setOriginalStarterQuestions: (questions: string[]) => void;
+  originalStarterEnabled: boolean;
+  setOriginalStarterEnabled: (enabled: boolean) => void;
+  starterIsLoading: boolean;
+  setStarterIsLoading: (loading: boolean) => void;
+  starterIsSaving: boolean;
+  setStarterIsSaving: (saving: boolean) => void;
+  starterStatus: {message: string, type: 'success' | 'error'} | null;
+  setStarterStatus: (status: {message: string, type: 'success' | 'error'} | null) => void;
 }){
   
   const labelFor = {
@@ -658,9 +1026,49 @@ function SettingsView({
             status={generalStatus}
             setStatus={setGeneralStatus}
           />}
-          {tab==='appearance' && <SettingsAppearance ref={handleAppearanceRef} />}
-          {tab==='messaging' && <SettingsMessaging ref={handleMessagingRef} />}
-          {tab==='starter' && <SettingsStarter ref={handleStarterRef} />}
+          {tab==='appearance' && <SettingsAppearance 
+            ref={handleAppearanceRef}
+            config={appearanceConfig}
+            setConfig={setAppearanceConfig}
+            originalConfig={originalAppearanceConfig}
+            setOriginalConfig={setOriginalAppearanceConfig}
+            isLoading={appearanceIsLoading}
+            setIsLoading={setAppearanceIsLoading}
+            isSaving={appearanceIsSaving}
+            setIsSaving={setAppearanceIsSaving}
+            status={appearanceStatus}
+            setStatus={setAppearanceStatus}
+          />}
+          {tab==='messaging' && <SettingsMessaging 
+            ref={handleMessagingRef}
+            config={messagingConfig}
+            setConfig={setMessagingConfig}
+            originalConfig={originalMessagingConfig}
+            setOriginalConfig={setOriginalMessagingConfig}
+            isLoading={messagingIsLoading}
+            setIsLoading={setMessagingIsLoading}
+            isSaving={messagingIsSaving}
+            setIsSaving={setMessagingIsSaving}
+            status={messagingStatus}
+            setStatus={setMessagingStatus}
+          />}
+          {tab==='starter' && <SettingsStarter 
+            ref={handleStarterRef}
+            questions={starterQuestions}
+            setQuestions={setStarterQuestions}
+            enabled={starterEnabled}
+            setEnabled={setStarterEnabled}
+            originalQuestions={originalStarterQuestions}
+            setOriginalQuestions={setOriginalStarterQuestions}
+            originalEnabled={originalStarterEnabled}
+            setOriginalEnabled={setOriginalStarterEnabled}
+            isLoading={starterIsLoading}
+            setIsLoading={setStarterIsLoading}
+            isSaving={starterIsSaving}
+            setIsSaving={setStarterIsSaving}
+            status={starterStatus}
+            setStatus={setStarterStatus}
+          />}
           {tab==='user' && <SettingsUserForm 
             ref={handleUserFormRef} 
             formEnabled={formEnabled}
@@ -799,19 +1207,64 @@ const SettingsGeneral = forwardRef<{saveBotConfig: () => void, discardChanges: (
   );
 });
 
-const SettingsAppearance = forwardRef<{saveWidgetConfig: () => void, discardChanges: () => void, hasUnsavedChanges: boolean}, {}>((props, ref) => {
-  const [color, setColor] = useState<string>('#6b4eff');
-  const [widgetIcon, setWidgetIcon] = useState<string>('💬');
-  const [position, setPosition] = useState<'left'|'right'>('right');
-  const [showBranding, setShowBranding] = useState<boolean>(true);
-  const [openByDefault, setOpenByDefault] = useState<boolean>(false);
-  const [starterQuestions, setStarterQuestions] = useState<boolean>(true);
-  const [subheading, setSubheading] = useState<string>('Our bot answers instantly');
-  const [inputPlaceholder, setInputPlaceholder] = useState<string>('Type your message...');
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isSaving, setIsSaving] = useState<boolean>(false);
-  const [status, setStatus] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+const SettingsAppearance = forwardRef<{saveWidgetConfig: () => void, discardChanges: () => void, hasUnsavedChanges: boolean}, {
+  config: {
+    color: string;
+    widgetIcon: string;
+    position: 'left' | 'right';
+    subheading: string;
+    inputPlaceholder: string;
+    showBranding: boolean;
+    openByDefault: boolean;
+    starterQuestions: boolean;
+    avatarUrl: string | null;
+  };
+  setConfig: React.Dispatch<React.SetStateAction<{
+    color: string;
+    widgetIcon: string;
+    position: 'left' | 'right';
+    subheading: string;
+    inputPlaceholder: string;
+    showBranding: boolean;
+    openByDefault: boolean;
+    starterQuestions: boolean;
+    avatarUrl: string | null;
+  }>>;
+  originalConfig: {
+    color: string;
+    widgetIcon: string;
+    position: 'left' | 'right';
+    subheading: string;
+    inputPlaceholder: string;
+    showBranding: boolean;
+    openByDefault: boolean;
+    starterQuestions: boolean;
+    avatarUrl: string | null;
+  };
+  setOriginalConfig: React.Dispatch<React.SetStateAction<{
+    color: string;
+    widgetIcon: string;
+    position: 'left' | 'right';
+    subheading: string;
+    inputPlaceholder: string;
+    showBranding: boolean;
+    openByDefault: boolean;
+    starterQuestions: boolean;
+    avatarUrl: string | null;
+  }>>;
+  isLoading: boolean;
+  setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
+  isSaving: boolean;
+  setIsSaving: React.Dispatch<React.SetStateAction<boolean>>;
+  status: {message: string, type: 'success' | 'error'} | null;
+  setStatus: React.Dispatch<React.SetStateAction<{message: string, type: 'success' | 'error'} | null>>;
+}>(({
+  config, setConfig, originalConfig, setOriginalConfig,
+  isLoading, setIsLoading, isSaving, setIsSaving, status, setStatus
+}, ref) => {
+  // Destructure config for easier access
+  const { color, widgetIcon, position, subheading, inputPlaceholder, showBranding, openByDefault, starterQuestions, avatarUrl } = config;
+  
   const [showColorPicker, setShowColorPicker] = useState<boolean>(false);
 
   const API_BASE = useMemo(()=> (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, ''), []);
@@ -819,36 +1272,6 @@ const SettingsAppearance = forwardRef<{saveWidgetConfig: () => void, discardChan
 
   const colorOptions = ['#6b4eff','#f97316','#f59e0b','#22c55e','#06b6d4','#3b82f6','#a855f7','#f43f5e','#8b5cf6'];
   const iconOptions = ['💬','🤖','🗨️','💭','📨','🔮','✨','🧠'];
-
-  // Load widget config on mount
-  useEffect(() => {
-    async function loadWidgetConfig() {
-      try {
-        setIsLoading(true);
-        const response = await fetch(`${API_BASE}/widget-config`, {
-          headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setColor(data.primary_color || '#6b4eff');
-          setWidgetIcon(data.widget_icon || '💬');
-          setPosition(data.widget_position || 'right');
-          setSubheading(data.subheading || 'Our bot answers instantly');
-          setInputPlaceholder(data.input_placeholder || 'Type your message...');
-          setShowBranding(data.show_branding ?? true);
-          setOpenByDefault(data.open_by_default ?? false);
-          setStarterQuestions(data.starter_questions ?? true);
-          setAvatarUrl(data.avatar_url || null);
-        }
-      } catch (error) {
-        console.error('Failed to load widget config:', error);
-        setStatus({message: 'Failed to load widget configuration', type: 'error'});
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    loadWidgetConfig();
-  }, [API_BASE, ADMIN_KEY]);
 
   // Save widget config
   const saveWidgetConfig = useCallback(async () => {
@@ -874,6 +1297,7 @@ const SettingsAppearance = forwardRef<{saveWidgetConfig: () => void, discardChan
       });
       
       if (response.ok) {
+        setOriginalConfig({ ...config }); // Update original config after successful save
         setStatus({message: 'Appearance settings saved successfully!', type: 'success'});
       } else {
         const errorData = await response.json().catch(() => ({}));
@@ -885,62 +1309,27 @@ const SettingsAppearance = forwardRef<{saveWidgetConfig: () => void, discardChan
     } finally {
       setIsSaving(false);
     }
-  }, [API_BASE, ADMIN_KEY, color, widgetIcon, position, inputPlaceholder, subheading, showBranding, openByDefault, starterQuestions]);
-
-  // Track original values for discard functionality
-  const [originalValues, setOriginalValues] = useState({
-    color: '#6b4eff',
-    widgetIcon: '💬',
-    position: 'right' as 'left'|'right',
-    subheading: 'Our bot answers instantly',
-    inputPlaceholder: 'Type your message...',
-    showBranding: true,
-    openByDefault: false,
-    starterQuestions: true
-  });
-
-  // Update original values when data is loaded
-  useEffect(() => {
-    if (!isLoading) {
-      setOriginalValues({
-        color,
-        widgetIcon,
-        position,
-        subheading,
-        inputPlaceholder,
-        showBranding,
-        openByDefault,
-        starterQuestions
-      });
-    }
-  }, [isLoading]); // Only depend on isLoading to avoid infinite loop
+  }, [API_BASE, ADMIN_KEY, color, widgetIcon, position, inputPlaceholder, subheading, showBranding, openByDefault, starterQuestions, config, setOriginalConfig, setIsSaving, setStatus]);
 
   // Check if there are unsaved changes
   const hasUnsavedChanges = useMemo(() => {
     return (
-      color !== originalValues.color ||
-      widgetIcon !== originalValues.widgetIcon ||
-      position !== originalValues.position ||
-      subheading !== originalValues.subheading ||
-      inputPlaceholder !== originalValues.inputPlaceholder ||
-      showBranding !== originalValues.showBranding ||
-      openByDefault !== originalValues.openByDefault ||
-      starterQuestions !== originalValues.starterQuestions
+      color !== originalConfig.color ||
+      widgetIcon !== originalConfig.widgetIcon ||
+      position !== originalConfig.position ||
+      subheading !== originalConfig.subheading ||
+      inputPlaceholder !== originalConfig.inputPlaceholder ||
+      showBranding !== originalConfig.showBranding ||
+      openByDefault !== originalConfig.openByDefault ||
+      starterQuestions !== originalConfig.starterQuestions
     );
-  }, [color, widgetIcon, position, subheading, inputPlaceholder, showBranding, openByDefault, starterQuestions, originalValues]);
+  }, [color, widgetIcon, position, subheading, inputPlaceholder, showBranding, openByDefault, starterQuestions, originalConfig]);
 
   // Discard changes function
   const discardChanges = useCallback(() => {
-    setColor(originalValues.color);
-    setWidgetIcon(originalValues.widgetIcon);
-    setPosition(originalValues.position);
-    setSubheading(originalValues.subheading);
-    setInputPlaceholder(originalValues.inputPlaceholder);
-    setShowBranding(originalValues.showBranding);
-    setOpenByDefault(originalValues.openByDefault);
-    setStarterQuestions(originalValues.starterQuestions);
+    setConfig({ ...originalConfig });
     setStatus(null);
-  }, [originalValues]);
+  }, [originalConfig, setConfig, setStatus]);
 
   // Expose methods to parent component
   useImperativeHandle(ref, () => ({
@@ -957,7 +1346,7 @@ const SettingsAppearance = forwardRef<{saveWidgetConfig: () => void, discardChan
         <input 
           className="input" 
           value={subheading}
-          onChange={(e) => setSubheading(e.target.value)}
+          onChange={(e) => setConfig(prev => ({ ...prev, subheading: e.target.value }))}
           disabled={isLoading}
           placeholder="Our bot answers instantly"
         />
@@ -968,7 +1357,7 @@ const SettingsAppearance = forwardRef<{saveWidgetConfig: () => void, discardChan
           label="Bot Avatar" 
           hint="Chatbot Picture to be displayed in the chatbot" 
           initialUrl={avatarUrl}
-          onUploadSuccess={(url) => setAvatarUrl(url)}
+          onUploadSuccess={(url) => setConfig(prev => ({ ...prev, avatarUrl: url }))}
         />
       </div>
 
@@ -981,7 +1370,7 @@ const SettingsAppearance = forwardRef<{saveWidgetConfig: () => void, discardChan
               <button 
                 key={c} 
                 type="button" 
-                onClick={() => setColor(c)} 
+                onClick={() => setConfig(prev => ({ ...prev, color: c }))} 
                 className={clsx(
                   'w-8 h-8 rounded-lg border-2 transition-all duration-200 hover:scale-110 hover:shadow-md',
                   color === c 
@@ -1015,7 +1404,7 @@ const SettingsAppearance = forwardRef<{saveWidgetConfig: () => void, discardChan
                   <input
                     type="color"
                     value={color}
-                    onChange={(e) => setColor(e.target.value)}
+                    onChange={(e) => setConfig(prev => ({ ...prev, color: e.target.value }))}
                     className="w-12 h-12 rounded-lg border-2 border-gray-300 cursor-pointer hover:border-gray-400 transition-colors"
                     title="Color Picker"
                   />
@@ -1031,7 +1420,7 @@ const SettingsAppearance = forwardRef<{saveWidgetConfig: () => void, discardChan
                   <input
                     type="text"
                     value={color}
-                    onChange={(e) => setColor(e.target.value)}
+                    onChange={(e) => setConfig(prev => ({ ...prev, color: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm font-mono focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                     placeholder="#000000"
                     pattern="^#[0-9A-Fa-f]{6}$"
@@ -1053,7 +1442,7 @@ const SettingsAppearance = forwardRef<{saveWidgetConfig: () => void, discardChan
             <button 
               key={ic} 
               type="button" 
-              onClick={() => setWidgetIcon(ic)} 
+              onClick={() => setConfig(prev => ({ ...prev, widgetIcon: ic }))} 
               className={clsx(
                 'w-10 h-10 rounded-lg border-2 flex items-center justify-center text-[20px] bg-white transition-all duration-200 hover:scale-110 hover:shadow-md',
                 widgetIcon === ic 
@@ -1070,8 +1459,8 @@ const SettingsAppearance = forwardRef<{saveWidgetConfig: () => void, discardChan
       <div className="space-y-2">
         <label className="label">Widget position</label>
         <div className="flex items-center gap-3">
-          <OptionCard label="Left" active={position==='left'} onClick={()=> setPosition('left')} />
-          <OptionCard label="Right" active={position==='right'} onClick={()=> setPosition('right')} />
+          <OptionCard label="Left" active={position==='left'} onClick={()=> setConfig(prev => ({ ...prev, position: 'left' }))} />
+          <OptionCard label="Right" active={position==='right'} onClick={()=> setConfig(prev => ({ ...prev, position: 'right' }))} />
         </div>
       </div>
 
@@ -1081,18 +1470,18 @@ const SettingsAppearance = forwardRef<{saveWidgetConfig: () => void, discardChan
         <input 
           className="input" 
           value={inputPlaceholder}
-          onChange={(e) => setInputPlaceholder(e.target.value)}
+          onChange={(e) => setConfig(prev => ({ ...prev, inputPlaceholder: e.target.value }))}
           disabled={isLoading}
           placeholder="Type your message..."
         />
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
-        <ToggleRow label="DiPietro branding on the widget" description="Hide/Show DiPietro banner at the bottom" value={showBranding} onChange={setShowBranding} />
-        <ToggleRow label="Widget is open by default" description="Open/Close widget when user engage for the first time" value={openByDefault} onChange={setOpenByDefault} />
+        <ToggleRow label="DiPietro branding on the widget" description="Hide/Show DiPietro banner at the bottom" value={showBranding} onChange={(val) => setConfig(prev => ({ ...prev, showBranding: val }))} />
+        <ToggleRow label="Widget is open by default" description="Open/Close widget when user engage for the first time" value={openByDefault} onChange={(val) => setConfig(prev => ({ ...prev, openByDefault: val }))} />
       </div>
 
-      <ToggleRow label="Starter Questions" description="Show floating Starter Questions" value={starterQuestions} onChange={setStarterQuestions} />
+      <ToggleRow label="Starter Questions" description="Show floating Starter Questions" value={starterQuestions} onChange={(val) => setConfig(prev => ({ ...prev, starterQuestions: val }))} />
       
       {status && (
         <div className={`text-[13px] p-3 rounded-lg ${
@@ -1326,40 +1715,26 @@ const SettingsStarter = forwardRef<{
   saveStarterQuestions: () => void;
   discardChanges: () => void;
   hasUnsavedChanges: boolean;
-}, {}>((props, ref) => {
-  const [questions, setQuestions] = useState<string[]>([]);
-  const [originalQuestions, setOriginalQuestions] = useState<string[]>([]);
-  const [enabled, setEnabled] = useState(true);
-  const [originalEnabled, setOriginalEnabled] = useState(true);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [status, setStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-
-  // Load starter questions from backend
-  useEffect(() => {
-    const loadStarterQuestions = async () => {
-      const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
-      setIsLoading(true);
-      try {
-        const response = await fetch(`${API_BASE}/starter-questions`);
-        if (response.ok) {
-          const data = await response.json();
-          const questionsArray = data.questions || [];
-          setQuestions(questionsArray);
-          setOriginalQuestions([...questionsArray]);
-          setEnabled(data.enabled ?? true);
-          setOriginalEnabled(data.enabled ?? true);
-        }
-      } catch (error) {
-        console.error('Failed to load starter questions:', error);
-        setStatus({ type: 'error', message: 'Failed to load starter questions' });
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadStarterQuestions();
-  }, []);
+}, {
+  questions: string[];
+  setQuestions: React.Dispatch<React.SetStateAction<string[]>>;
+  originalQuestions: string[];
+  setOriginalQuestions: React.Dispatch<React.SetStateAction<string[]>>;
+  enabled: boolean;
+  setEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+  originalEnabled: boolean;
+  setOriginalEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+  isLoading: boolean;
+  setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
+  isSaving: boolean;
+  setIsSaving: React.Dispatch<React.SetStateAction<boolean>>;
+  status: { type: 'success' | 'error'; message: string } | null;
+  setStatus: React.Dispatch<React.SetStateAction<{ type: 'success' | 'error'; message: string } | null>>;
+}>(({
+  questions, setQuestions, originalQuestions, setOriginalQuestions,
+  enabled, setEnabled, originalEnabled, setOriginalEnabled,
+  isLoading, setIsLoading, isSaving, setIsSaving, status, setStatus
+}, ref) => {
 
   const saveStarterQuestions = useCallback(async () => {
     const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
@@ -1392,13 +1767,13 @@ const SettingsStarter = forwardRef<{
     } finally {
       setIsSaving(false);
     }
-  }, [questions, enabled]);
+  }, [questions, enabled, setOriginalQuestions, setOriginalEnabled, setIsSaving, setStatus]);
 
   const discardChanges = useCallback(() => {
     setQuestions([...originalQuestions]);
     setEnabled(originalEnabled);
     setStatus(null);
-  }, [originalQuestions, originalEnabled]);
+  }, [originalQuestions, originalEnabled, setQuestions, setEnabled, setStatus]);
 
   const hasUnsavedChanges = useMemo(() => {
     return JSON.stringify(questions) !== JSON.stringify(originalQuestions) || enabled !== originalEnabled;
@@ -1577,60 +1952,82 @@ const SettingsStarter = forwardRef<{
 });
 
 
-const SettingsMessaging = forwardRef<{saveMessagingConfig: () => void, discardChanges: () => void, hasUnsavedChanges: boolean}, {}>((props, ref) => {
-  const [aiModel, setAiModel] = useState('gpt-4o');
-  const [conversational, setConversational] = useState(true);
-  const [strictFaq, setStrictFaq] = useState(true);
-  const [respLen, setRespLen] = useState<'Short'|'Medium'|'Long'>('Medium');
-  const [suggestFollowups, setSuggestFollowups] = useState(false);
-  const [allowImages, setAllowImages] = useState(false);
-  const [showSources, setShowSources] = useState(true);
-  const [postFeedback, setPostFeedback] = useState(true);
-  const [multilingual, setMultilingual] = useState(true);
-  const [showWelcome, setShowWelcome] = useState(true);
-  const [welcomeMsg, setWelcomeMsg] = useState("Hey there, how can I help you?");
-  const [noSourceMsg, setNoSourceMsg] = useState("The bot is yet to be trained, please add the data and train the bot.");
-  const [serverErrMsg, setServerErrMsg] = useState("Apologies, there seems to be a server error.");
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isSaving, setIsSaving] = useState<boolean>(false);
-  const [status, setStatus] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+const SettingsMessaging = forwardRef<{saveMessagingConfig: () => void, discardChanges: () => void, hasUnsavedChanges: boolean}, {
+  config: {
+    aiModel: string;
+    conversational: boolean;
+    strictFaq: boolean;
+    responseLength: 'Short' | 'Medium' | 'Long';
+    suggestFollowups: boolean;
+    allowImages: boolean;
+    showSources: boolean;
+    postFeedback: boolean;
+    multilingual: boolean;
+    showWelcome: boolean;
+    welcomeMessage: string;
+    noSourceMessage: string;
+    serverErrorMessage: string;
+  };
+  setConfig: React.Dispatch<React.SetStateAction<{
+    aiModel: string;
+    conversational: boolean;
+    strictFaq: boolean;
+    responseLength: 'Short' | 'Medium' | 'Long';
+    suggestFollowups: boolean;
+    allowImages: boolean;
+    showSources: boolean;
+    postFeedback: boolean;
+    multilingual: boolean;
+    showWelcome: boolean;
+    welcomeMessage: string;
+    noSourceMessage: string;
+    serverErrorMessage: string;
+  }>>;
+  originalConfig: {
+    aiModel: string;
+    conversational: boolean;
+    strictFaq: boolean;
+    responseLength: 'Short' | 'Medium' | 'Long';
+    suggestFollowups: boolean;
+    allowImages: boolean;
+    showSources: boolean;
+    postFeedback: boolean;
+    multilingual: boolean;
+    showWelcome: boolean;
+    welcomeMessage: string;
+    noSourceMessage: string;
+    serverErrorMessage: string;
+  };
+  setOriginalConfig: React.Dispatch<React.SetStateAction<{
+    aiModel: string;
+    conversational: boolean;
+    strictFaq: boolean;
+    responseLength: 'Short' | 'Medium' | 'Long';
+    suggestFollowups: boolean;
+    allowImages: boolean;
+    showSources: boolean;
+    postFeedback: boolean;
+    multilingual: boolean;
+    showWelcome: boolean;
+    welcomeMessage: string;
+    noSourceMessage: string;
+    serverErrorMessage: string;
+  }>>;
+  isLoading: boolean;
+  setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
+  isSaving: boolean;
+  setIsSaving: React.Dispatch<React.SetStateAction<boolean>>;
+  status: {message: string, type: 'success' | 'error'} | null;
+  setStatus: React.Dispatch<React.SetStateAction<{message: string, type: 'success' | 'error'} | null>>;
+}>(({
+  config, setConfig, originalConfig, setOriginalConfig,
+  isLoading, setIsLoading, isSaving, setIsSaving, status, setStatus
+}, ref) => {
+  // Destructure config for easier access
+  const { aiModel, conversational, strictFaq, responseLength, suggestFollowups, allowImages, showSources, postFeedback, multilingual, showWelcome, welcomeMessage, noSourceMessage, serverErrorMessage } = config;
 
   const API_BASE = useMemo(()=> (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, ''), []);
   const ADMIN_KEY = useMemo(()=> process.env.NEXT_PUBLIC_ADMIN_API_KEY || '', []);
-
-  // Load messaging config on mount
-  useEffect(() => {
-    async function loadMessagingConfig() {
-      try {
-        setIsLoading(true);
-        const response = await fetch(`${API_BASE}/messaging-config`, {
-          headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setAiModel(data.ai_model || 'gpt-4o');
-          setConversational(data.conversational ?? true);
-          setStrictFaq(data.strict_faq ?? true);
-          setRespLen(data.response_length || 'Medium');
-          setSuggestFollowups(data.suggest_followups ?? false);
-          setAllowImages(data.allow_images ?? false);
-          setShowSources(data.show_sources ?? true);
-          setPostFeedback(data.post_feedback ?? true);
-          setMultilingual(data.multilingual ?? true);
-          setShowWelcome(data.show_welcome ?? true);
-          setWelcomeMsg(data.welcome_message || "Hey there, how can I help you?");
-          setNoSourceMsg(data.no_source_message || "The bot is yet to be trained, please add the data and train the bot.");
-          setServerErrMsg(data.server_error_message || "Apologies, there seems to be a server error.");
-        }
-      } catch (error) {
-        console.error('Failed to load messaging config:', error);
-        setStatus({message: 'Failed to load messaging configuration', type: 'error'});
-      } finally {
-        setIsLoading(false);
-      }
-    }
-    loadMessagingConfig();
-  }, [API_BASE, ADMIN_KEY]);
 
   // Save messaging config
   const saveMessagingConfig = useCallback(async () => {
@@ -1647,20 +2044,21 @@ const SettingsMessaging = forwardRef<{saveMessagingConfig: () => void, discardCh
           ai_model: aiModel,
           conversational: conversational,
           strict_faq: strictFaq,
-          response_length: respLen,
+          response_length: responseLength,
           suggest_followups: suggestFollowups,
           allow_images: allowImages,
           show_sources: showSources,
           post_feedback: postFeedback,
           multilingual: multilingual,
           show_welcome: showWelcome,
-          welcome_message: welcomeMsg,
-          no_source_message: noSourceMsg,
-          server_error_message: serverErrMsg
+          welcome_message: welcomeMessage,
+          no_source_message: noSourceMessage,
+          server_error_message: serverErrorMessage
         })
       });
       
       if (response.ok) {
+        setOriginalConfig({ ...config }); // Update original config after successful save
         setStatus({message: 'Messaging settings saved successfully!', type: 'success'});
       } else {
         const errorData = await response.json().catch(() => ({}));
@@ -1672,82 +2070,32 @@ const SettingsMessaging = forwardRef<{saveMessagingConfig: () => void, discardCh
     } finally {
       setIsSaving(false);
     }
-  }, [API_BASE, ADMIN_KEY, aiModel, conversational, strictFaq, respLen, suggestFollowups, allowImages, showSources, postFeedback, multilingual, showWelcome, welcomeMsg, noSourceMsg, serverErrMsg]);
-
-  // Track original values for discard functionality
-  const [originalValues, setOriginalValues] = useState({
-    aiModel: 'gpt-4o',
-    conversational: true,
-    strictFaq: true,
-    respLen: 'Medium' as 'Short'|'Medium'|'Long',
-    suggestFollowups: false,
-    allowImages: false,
-    showSources: true,
-    postFeedback: true,
-    multilingual: true,
-    showWelcome: true,
-    welcomeMsg: "Hey there, how can I help you?",
-    noSourceMsg: "The bot is yet to be trained, please add the data and train the bot.",
-    serverErrMsg: "Apologies, there seems to be a server error."
-  });
-
-  // Update original values when data is loaded
-  useEffect(() => {
-    if (!isLoading) {
-      setOriginalValues({
-        aiModel,
-        conversational,
-        strictFaq,
-        respLen,
-        suggestFollowups,
-        allowImages,
-        showSources,
-        postFeedback,
-        multilingual,
-        showWelcome,
-        welcomeMsg,
-        noSourceMsg,
-        serverErrMsg
-      });
-    }
-  }, [isLoading]); // Only depend on isLoading to avoid infinite loop
+  }, [API_BASE, ADMIN_KEY, aiModel, conversational, strictFaq, responseLength, suggestFollowups, allowImages, showSources, postFeedback, multilingual, showWelcome, welcomeMessage, noSourceMessage, serverErrorMessage, config, setOriginalConfig, setIsSaving, setStatus]);
 
   // Check if there are unsaved changes
   const hasUnsavedChanges = useMemo(() => {
     return (
-      aiModel !== originalValues.aiModel ||
-      conversational !== originalValues.conversational ||
-      strictFaq !== originalValues.strictFaq ||
-      respLen !== originalValues.respLen ||
-      suggestFollowups !== originalValues.suggestFollowups ||
-      allowImages !== originalValues.allowImages ||
-      showSources !== originalValues.showSources ||
-      postFeedback !== originalValues.postFeedback ||
-      multilingual !== originalValues.multilingual ||
-      showWelcome !== originalValues.showWelcome ||
-      welcomeMsg !== originalValues.welcomeMsg ||
-      noSourceMsg !== originalValues.noSourceMsg ||
-      serverErrMsg !== originalValues.serverErrMsg
+      aiModel !== originalConfig.aiModel ||
+      conversational !== originalConfig.conversational ||
+      strictFaq !== originalConfig.strictFaq ||
+      responseLength !== originalConfig.responseLength ||
+      suggestFollowups !== originalConfig.suggestFollowups ||
+      allowImages !== originalConfig.allowImages ||
+      showSources !== originalConfig.showSources ||
+      postFeedback !== originalConfig.postFeedback ||
+      multilingual !== originalConfig.multilingual ||
+      showWelcome !== originalConfig.showWelcome ||
+      welcomeMessage !== originalConfig.welcomeMessage ||
+      noSourceMessage !== originalConfig.noSourceMessage ||
+      serverErrorMessage !== originalConfig.serverErrorMessage
     );
-  }, [aiModel, conversational, strictFaq, respLen, suggestFollowups, allowImages, showSources, postFeedback, multilingual, showWelcome, welcomeMsg, noSourceMsg, serverErrMsg, originalValues]);
+  }, [aiModel, conversational, strictFaq, responseLength, suggestFollowups, allowImages, showSources, postFeedback, multilingual, showWelcome, welcomeMessage, noSourceMessage, serverErrorMessage, originalConfig]);
 
   // Discard changes function
   const discardChanges = useCallback(() => {
-    setAiModel(originalValues.aiModel);
-    setConversational(originalValues.conversational);
-    setStrictFaq(originalValues.strictFaq);
-    setRespLen(originalValues.respLen);
-    setSuggestFollowups(originalValues.suggestFollowups);
-    setAllowImages(originalValues.allowImages);
-    setShowSources(originalValues.showSources);
-    setPostFeedback(originalValues.postFeedback);
-    setMultilingual(originalValues.multilingual);
-    setShowWelcome(originalValues.showWelcome);
-    setWelcomeMsg(originalValues.welcomeMsg);
-    setNoSourceMsg(originalValues.noSourceMsg);
-    setServerErrMsg(originalValues.serverErrMsg);
+    setConfig({ ...originalConfig });
     setStatus(null);
-  }, [originalValues]);
+  }, [originalConfig, setConfig, setStatus]);
 
   // Expose methods to parent component
   useImperativeHandle(ref, () => ({
@@ -1758,57 +2106,57 @@ const SettingsMessaging = forwardRef<{saveMessagingConfig: () => void, discardCh
 
   return (
     <div className="p-6 grid gap-6">
-      <Row title="AI Model" description="Select a model to power your bot" trailing={<Select value={aiModel} onChange={(v)=> setAiModel(v)} options={['gpt-3.5-turbo','gpt-4o']} />} />
+      <Row title="AI Model" description="Select a model to power your bot" trailing={<Select value={aiModel} onChange={(v)=> setConfig(prev => ({ ...prev, aiModel: v }))} options={['gpt-3.5-turbo','gpt-4o']} />} />
 
       <Row title={<span>Conversational Mode </span>} description="Segment bot's responses into shorter, more readable messages. The entire response still counts as one message">
-        <Toggle value={conversational} onChange={setConversational} />
+        <Toggle value={conversational} onChange={(val) => setConfig(prev => ({ ...prev, conversational: val }))} />
       </Row>
 
       <Row title="Strict FAQ Responses" description="When enabled, responses are limited to exact FAQ content.">
-        <Toggle value={strictFaq} onChange={setStrictFaq} />
+        <Toggle value={strictFaq} onChange={(val) => setConfig(prev => ({ ...prev, strictFaq: val }))} />
       </Row>
 
-      <Row title="Response Length" description="Select the response length of your bot" trailing={<Select value={respLen} onChange={(v)=> setRespLen(v as any)} options={['Short','Medium','Long']} />} />
+      <Row title="Response Length" description="Select the response length of your bot" trailing={<Select value={responseLength} onChange={(v)=> setConfig(prev => ({ ...prev, responseLength: v as any }))} options={['Short','Medium','Long']} />} />
 
       {/* <Row title="Suggest Follow Up Questions" description="If enabled, we will suggest 2 new follow up questions from your knowledge base">
-        <Toggle value={suggestFollowups} onChange={setSuggestFollowups} />
+        <Toggle value={suggestFollowups} onChange={(val) => setConfig(prev => ({ ...prev, suggestFollowups: val }))} />
       </Row> */}
 
       {/* <Row title="Allow Image Usage" description="Allows the bot to use the scraped images for training and response generation">
-        <Toggle value={allowImages} onChange={setAllowImages} />
+        <Toggle value={allowImages} onChange={(val) => setConfig(prev => ({ ...prev, allowImages: val }))} />
       </Row> */}
 
       {/* <Row title="Show sources with the response" description="Hide/Show sources along with responses">
-        <Toggle value={showSources} onChange={setShowSources} />
+        <Toggle value={showSources} onChange={(val) => setConfig(prev => ({ ...prev, showSources: val }))} />
       </Row> */}
 
       {/* <Row title="Post chat feedback" description="Hide/Show post chat feedback">
-        <Toggle value={postFeedback} onChange={setPostFeedback} />
+        <Toggle value={postFeedback} onChange={(val) => setConfig(prev => ({ ...prev, postFeedback: val }))} />
       </Row> */}
 
       {/* <Row title="Multilingual Support" description="If disabled, the bot will stick to the selected language">
-        <Toggle value={multilingual} onChange={setMultilingual} />
+        <Toggle value={multilingual} onChange={(val) => setConfig(prev => ({ ...prev, multilingual: val }))} />
       </Row> */}
 
       <Row title="Show floating welcome message" description="Toggle visibility of the Welcome Message">
-        <Toggle value={showWelcome} onChange={setShowWelcome} />
+        <Toggle value={showWelcome} onChange={(val) => setConfig(prev => ({ ...prev, showWelcome: val }))} />
       </Row>
 
       <div className="space-y-2">
         <label className="label">Welcome Message</label>
         <p className="text-[13px] text-gray-500">Customize the welcome message that is shown to your customers</p>
-        <input className="input" value={welcomeMsg} onChange={e=> setWelcomeMsg(e.target.value)} />
+        <input className="input" value={welcomeMessage} onChange={e=> setConfig(prev => ({ ...prev, welcomeMessage: e.target.value }))} />
         {/* <div className="text-[12px] text-gray-500">Note: Now you can use @ to add variables. <button className="text-primary-500">Learn more</button></div> */}
       </div>
 
       {/* <div className="space-y-2">
         <label className="label">Message shown when no Source is added</label>
-        <input className="input" value={noSourceMsg} onChange={e=> setNoSourceMsg(e.target.value)} />
+        <input className="input" value={noSourceMessage} onChange={e=> setConfig(prev => ({ ...prev, noSourceMessage: e.target.value }))} />
       </div> */}
 
       <div className="space-y-2">
         <label className="label">Message shown when there is a Server Error</label>
-        <input className="input" value={serverErrMsg} onChange={e=> setServerErrMsg(e.target.value)} />
+        <input className="input" value={serverErrorMessage} onChange={e=> setConfig(prev => ({ ...prev, serverErrorMessage: e.target.value }))} />
       </div>
 
       {status && (
