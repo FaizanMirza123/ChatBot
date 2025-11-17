@@ -36,7 +36,7 @@ ENV PYTHONPATH=/app
 
 # Create directories
 # Create directories and model caches
-RUN mkdir -p app/uploads app/chroma_db /root/.cache/huggingface /root/.cache/torch/sentence_transformers /root/.cache/fastembed
+RUN mkdir -p uploads chroma_db /root/.cache/huggingface /root/.cache/torch/sentence_transformers /root/.cache/fastembed
 
 # Prefetch models into image layer so they don't download on every run
 # This layer will be cached unless requirements above change
