@@ -2295,6 +2295,28 @@ function FilesSection(){
     }catch(_){ /* noop */ }
   }
 
+  async function download(id:number, filename:string){
+    try{
+      const res = await fetch(`${API_BASE}/documents/${id}/download`, { headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : undefined });
+      if(!res.ok){ 
+        const data = await res.json().catch(()=>({}));
+        alert(data.detail || res.statusText); 
+        return;
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    }catch(e:any){ 
+      alert(`Download failed: ${e?.message || 'Unknown error'}`); 
+    }
+  }
+
   // Dropzone handlers
   function onDrop(e: React.DragEvent){ e.preventDefault(); const f=e.dataTransfer.files?.[0]; if(f) setFile(f); }
   function onDragOver(e: React.DragEvent){ e.preventDefault(); }
@@ -2342,11 +2364,11 @@ function FilesSection(){
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <div className="min-w-[900px] grid grid-cols-[1fr_120px_140px_140px_160px_40px] px-6 py-3 text-[13px] text-gray-500">
+              <div className="min-w-[900px] grid grid-cols-[1fr_120px_140px_140px_160px_80px] px-6 py-3 text-[13px] text-gray-500">
                 <div>Name</div><div>Type</div><div>Visibility</div><div>Status</div><div>Updated</div><div></div>
               </div>
               {(docs||[]).map(d=> (
-              <div key={d.id} className="min-w-[900px] border-t border-gray-100 px-6 py-3 grid grid-cols-[1fr_120px_140px_140px_160px_40px] items-center text-[14px]">
+              <div key={d.id} className="min-w-[900px] border-t border-gray-100 px-6 py-3 grid grid-cols-[1fr_120px_140px_140px_160px_80px] items-center text-[14px]">
                 <div className="truncate" title={d.filename}>{d.filename}</div>
                 <div className="text-gray-500 uppercase">{d.document_type}</div>
                 <div>
@@ -2358,7 +2380,17 @@ function FilesSection(){
                 </div>
                 <div>{d.processed ? <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 text-[12px] px-2 py-0.5">Trained ({d.chunk_count})</span> : <span className="text-[12px] text-gray-500">Processing…</span>}</div>
                 <div className="text-gray-500">{new Date(d.upload_date).toLocaleString()}</div>
-                <div>
+                <div className="flex items-center gap-2">
+                  <button 
+                    className="inline-flex items-center justify-center w-8 h-8 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-full transition-colors duration-200 group" 
+                    onClick={()=> download(d.id, d.filename)} 
+                    aria-label="Download document"
+                    title="Download document"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                  </button>
                   <button 
                     className="inline-flex items-center justify-center w-8 h-8 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full transition-colors duration-200 group" 
                     onClick={()=> del(d.id)} 

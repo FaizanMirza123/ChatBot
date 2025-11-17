@@ -1,5 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Header, Response
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -1032,6 +1032,30 @@ async def set_document_visibility(document_id: int, payload: dict, db: Session =
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error setting visibility: {str(e)}")
+
+@app.get("/documents/{document_id}/download")
+async def download_document(document_id: int, db: Session = Depends(get_db), _: bool = Depends(require_admin)):
+    """Download a document file"""
+    try:
+        doc = db.query(KnowledgeDocument).filter(KnowledgeDocument.id == document_id).first()
+        if not doc:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        # Resolve file path to absolute path (handles both absolute and relative paths)
+        file_path = Path(doc.file_path).resolve()
+        
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="File not found on disk")
+        
+        return FileResponse(
+            path=str(file_path),
+            filename=doc.filename,
+            media_type='application/octet-stream'
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error downloading document: {str(e)}")
 
 @app.get("/", response_class=HTMLResponse)
 async def get_chat_interface():
