@@ -12,7 +12,7 @@ from models import Prompt, KnowledgeDocument, Message, User, Session as ChatSess
 from schemas import ChatIn, ChatResponseOut, SystemPromptIn, SystemPromptOut, DocumentUploadOut, DocumentListOut, DocumentDeleteOut, ChatMessageOut, ChatDetailOut, UserOut, UserDetailOut, ChatOut
 from schemas import LeadIn, LeadOut, WidgetConfigOut, WidgetConfigIn
 from schemas import FormField, BotConfigOut, BotConfigIn, MessagingConfigOut, MessagingConfigIn, StarterQuestionsOut, StarterQuestionsIn
-from schemas import LoginIn, LoginOut
+from schemas import LoginIn, LoginOut, FAQIn
 from services.rag_service import RAGService
 from utils.token_counter import trim_history_to_token_budget
 import os
@@ -1869,6 +1869,26 @@ async def list_faqs(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Error listing FAQs: {str(e)}")
 
 
+@app.put("/faqs/{faq_id}")
+async def update_faq(faq_id: int, faq_data: FAQIn, db: Session = Depends(get_db), _: bool = Depends(require_admin)):
+    """Update an existing FAQ"""
+    try:
+        faq = db.query(FAQ).filter(FAQ.id == faq_id).first()
+        if not faq:
+            raise HTTPException(status_code=404, detail="FAQ not found")
+        
+        faq.question = faq_data.question.strip()
+        faq.answer = faq_data.answer.strip()
+        db.add(faq)
+        db.commit()
+        db.refresh(faq)
+        return {"id": faq.id, "question": faq.question, "answer": faq.answer}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error updating FAQ: {str(e)}")
+
 @app.delete("/faqs/{faq_id}")
 async def delete_faq(faq_id: int, db: Session = Depends(get_db), _: bool = Depends(require_admin)):
     try:
@@ -1892,6 +1912,10 @@ async def upload_faqs_csv_api(file: UploadFile = File(...), db: Session = Depend
 @app.get("/api/faqs")
 async def list_faqs_api(db: Session = Depends(get_db)):
     return await list_faqs(db=db)
+
+@app.put("/api/faqs/{faq_id}")
+async def update_faq_api(faq_id: int, faq_data: FAQIn, db: Session = Depends(get_db), _: bool = Depends(require_admin)):
+    return await update_faq(faq_id=faq_id, faq_data=faq_data, db=db)
 
 @app.delete("/api/faqs/{faq_id}")
 async def delete_faq_api(faq_id: int, db: Session = Depends(get_db), _: bool = Depends(require_admin)):

@@ -2423,6 +2423,10 @@ function FaqsSection(){
   const [status, setStatus] = useState('');
   const [faqs, setFaqs] = useState<Array<{id:number; question:string; answer:string}>>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editQuestion, setEditQuestion] = useState('');
+  const [editAnswer, setEditAnswer] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
   
   const loadFaqs = useCallback(async () => {
     try{ 
@@ -2447,6 +2451,52 @@ function FaqsSection(){
       else { setStatus(`Imported ${data.created} FAQs${data.skipped?`, skipped ${data.skipped}`:''}`); setCsv(null); await loadFaqs(); }
     }catch(e:any){ setStatus(`Error: ${e?.message||'Upload failed'}`); }
     finally{ setBusy(false); }
+  }
+
+  function startEdit(faq: {id:number; question:string; answer:string}){
+    setEditingId(faq.id);
+    setEditQuestion(faq.question);
+    setEditAnswer(faq.answer);
+  }
+
+  function cancelEdit(){
+    setEditingId(null);
+    setEditQuestion('');
+    setEditAnswer('');
+  }
+
+  async function saveEdit(id:number){
+    if(!editQuestion.trim() || !editAnswer.trim()){
+      setStatus('Question and answer cannot be empty');
+      return;
+    }
+    setIsSaving(true);
+    setStatus('');
+    try{
+      const res = await fetch(`${API_BASE}/faqs/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {})
+        },
+        body: JSON.stringify({ question: editQuestion.trim(), answer: editAnswer.trim() })
+      });
+      const data = await res.json().catch(()=>({}));
+      if(!res.ok){
+        setStatus(`Error: ${data.detail || res.statusText}`);
+      } else {
+        setStatus('FAQ updated successfully');
+        setEditingId(null);
+        setEditQuestion('');
+        setEditAnswer('');
+        await loadFaqs();
+        setTimeout(()=> setStatus(''), 2000);
+      }
+    }catch(e:any){
+      setStatus(`Error: ${e?.message || 'Update failed'}`);
+    }finally{
+      setIsSaving(false);
+    }
   }
 
   async function delFaq(id:number){
@@ -2506,19 +2556,73 @@ function FaqsSection(){
           ) : (
             <div className="divide-y divide-gray-100">
               {faqs.map(f=> (
-                <div key={f.id} className="px-6 py-3 grid md:grid-cols-[1fr_2fr_40px] items-start gap-4">
-                  <div className="font-medium">{f.question}</div>
-                  <div className="text-gray-700 text-[14px] whitespace-pre-wrap">{f.answer}</div>
-                  <button 
-                    className="inline-flex items-center justify-center w-8 h-8 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full transition-colors duration-200 group" 
-                    onClick={()=> delFaq(f.id)} 
-                    aria-label="Delete FAQ"
-                    title="Delete FAQ"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                  </button>
+                <div key={f.id} className="px-6 py-3">
+                  {editingId === f.id ? (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-[13px] font-medium text-gray-700 mb-1">Question</label>
+                        <input
+                          type="text"
+                          className="input w-full"
+                          value={editQuestion}
+                          onChange={(e)=> setEditQuestion(e.target.value)}
+                          disabled={isSaving}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[13px] font-medium text-gray-700 mb-1">Answer</label>
+                        <textarea
+                          className="input w-full min-h-[100px] resize-y"
+                          value={editAnswer}
+                          onChange={(e)=> setEditAnswer(e.target.value)}
+                          disabled={isSaving}
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          className="btn btn-primary text-[13px] px-4 py-2"
+                          onClick={()=> saveEdit(f.id)}
+                          disabled={isSaving || !editQuestion.trim() || !editAnswer.trim()}
+                        >
+                          {isSaving ? 'Saving...' : 'Save'}
+                        </button>
+                        <button
+                          className="btn btn-ghost text-[13px] px-4 py-2"
+                          onClick={cancelEdit}
+                          disabled={isSaving}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid md:grid-cols-[1fr_2fr_80px] items-start gap-4">
+                      <div className="font-medium">{f.question}</div>
+                      <div className="text-gray-700 text-[14px] whitespace-pre-wrap">{f.answer}</div>
+                      <div className="flex items-center gap-2">
+                        <button 
+                          className="inline-flex items-center justify-center w-8 h-8 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-full transition-colors duration-200 group" 
+                          onClick={()=> startEdit(f)} 
+                          aria-label="Edit FAQ"
+                          title="Edit FAQ"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                        <button 
+                          className="inline-flex items-center justify-center w-8 h-8 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-full transition-colors duration-200 group" 
+                          onClick={()=> delFaq(f.id)} 
+                          aria-label="Delete FAQ"
+                          title="Delete FAQ"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
