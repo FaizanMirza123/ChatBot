@@ -1041,11 +1041,23 @@ async def download_document(document_id: int, db: Session = Depends(get_db), _: 
         if not doc:
             raise HTTPException(status_code=404, detail="Document not found")
         
-        # Resolve file path to absolute path (handles both absolute and relative paths)
-        file_path = Path(doc.file_path).resolve()
+        # Resolve file path - stored path is relative like "uploads/filename.pdf"
+        # First try to resolve it as-is (in case it's already absolute)
+        file_path = Path(doc.file_path)
+        if file_path.is_absolute():
+            file_path = file_path.resolve()
+        else:
+            # If relative, resolve relative to UPLOAD_DIR
+            # Handle both "uploads/filename.pdf" and just "filename.pdf"
+            if str(file_path).startswith("uploads") or str(file_path).startswith("uploads/"):
+                # Path already includes uploads, resolve it
+                file_path = file_path.resolve()
+            else:
+                # Path is just filename, prepend UPLOAD_DIR
+                file_path = (UPLOAD_DIR / file_path).resolve()
         
         if not file_path.exists():
-            raise HTTPException(status_code=404, detail="File not found on disk")
+            raise HTTPException(status_code=404, detail=f"File not found on disk at: {file_path}")
         
         return FileResponse(
             path=str(file_path),
