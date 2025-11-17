@@ -207,6 +207,16 @@
       box-shadow:var(--cb-shadow);border:1px solid var(--cb-primary);
       margin-top:4px;
     }
+    .cb-message a,.cb-message.assistant .cb-msg-text a{
+      color:var(--cb-primary);
+      text-decoration:underline;
+      cursor:pointer;
+      word-break:break-all;
+    }
+    .cb-message a:hover,.cb-message.assistant .cb-msg-text a:hover{
+      color:var(--cb-primary-dark);
+      text-decoration:underline;
+    }
     
     .cb-input{
       display:flex;gap:12px;padding:20px;
@@ -274,15 +284,67 @@
       if(res.status===404 && !/\/api\//.test(url)){ const apiUrl=url.replace(/(https?:\/\/[^/]+)(\/.*)?/, (m,origin,rest)=> origin + '/api' + (rest||'')); const r2=await fetch(apiUrl,Object.assign({mode:'cors'},o)); if(r2.ok) return r2.status===204? null : await r2.json(); }
       throw new Error((await res.text().catch(()=>''))||('HTTP '+res.status));
     }
+    function linkifyText(text){
+      if(!text || typeof text!=='string') return null;
+      const urlRegex=/(https?:\/\/[^\s<>"{}|\\^`\[\]]+)|(www\.[^\s<>"{}|\\^`\[\]]+)/gi;
+      const parts=[];
+      let lastIndex=0;
+      let match;
+      const textStr=String(text);
+      while((match=urlRegex.exec(textStr))!==null){
+        if(match.index>lastIndex) parts.push({type:'text',content:textStr.substring(lastIndex,match.index)});
+        let url=match[0];
+        let displayText=url;
+        const trailingPunct=/[.,!?;:]+$/.exec(url);
+        if(trailingPunct){
+          url=url.substring(0,url.length-trailingPunct[0].length);
+          displayText=url;
+        }
+        if(!url.match(/^https?:\/\//i)) url='https://'+url;
+        try{
+          new URL(url);
+          parts.push({type:'link',url:url,text:displayText,trailing:trailingPunct?trailingPunct[0]:''});
+        }catch(e){
+          parts.push({type:'text',content:match[0]});
+        }
+        lastIndex=match.index+match[0].length;
+      }
+      if(lastIndex<textStr.length) parts.push({type:'text',content:textStr.substring(lastIndex)});
+      if(parts.length===0) return null;
+      const frag=document.createDocumentFragment();
+      parts.forEach(p=>{
+        if(p.type==='link'){
+          const a=document.createElement('a');
+          a.href=p.url;
+          a.textContent=p.text;
+          a.target='_blank';
+          a.rel='noopener noreferrer';
+          a.style.color='var(--cb-primary)';
+          a.style.textDecoration='underline';
+          a.style.cursor='pointer';
+          frag.appendChild(a);
+          if(p.trailing) frag.appendChild(document.createTextNode(p.trailing));
+        }else{
+          frag.appendChild(document.createTextNode(p.content));
+        }
+      });
+      return frag;
+    }
     function addMessage(role,content){
+      if(!content) content='';
+      const contentStr=String(content);
       if(role==='assistant'){
         const m=el('div','cb-message assistant');
         const av=document.createElement('img'); av.className='cb-msg-avatar'; av.src=botAvatarUrl||DEFAULT_AVATAR; av.alt='';
-        const t=el('div','cb-msg-text',content);
+        const t=el('div','cb-msg-text');
+        const linked=linkifyText(contentStr);
+        if(linked && linked.nodeType===11) t.appendChild(linked); else t.textContent=contentStr;
         m.appendChild(av); m.appendChild(t);
         messages.appendChild(m);
       } else {
-        const m=el('div','cb-message '+role,content);
+        const m=el('div','cb-message '+role);
+        const linked=linkifyText(contentStr);
+        if(linked && linked.nodeType===11) m.appendChild(linked); else m.textContent=contentStr;
         messages.appendChild(m);
       }
       messages.scrollTop=messages.scrollHeight;
