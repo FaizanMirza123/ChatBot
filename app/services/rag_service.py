@@ -56,42 +56,11 @@ class RAGService:
     
     def should_use_knowledge_base(self, query: str) -> bool:
         """
-        Determine if a query should use the knowledge base based on content analysis.
-        Returns False for greetings and casual conversation.
+        Always search the knowledge base for every query - NO RESTRICTIONS.
+        Let the vector search distance determine relevance.
         """
-        query_lower = query.lower().strip()
-        
-        # Always skip KB for casual/personal interactions
-        casual_patterns = [
-            r'^(hi|hello|hey|good morning|good afternoon|good evening|greetings)!?$',
-            r'^(how are you|how\'s it going|what\'s up)!?$',
-            r'^(thanks|thank you|bye|goodbye|see you)!?$',
-            r'^(yes|no|ok|okay|sure|fine)!?$',
-            r'.*\b(critical analysis|analyze me|tell me about myself|personal|bro|dude)\b.*'
-        ]
-        
-        for pattern in casual_patterns:
-            if re.match(pattern, query_lower):
-                return False
-        
-        # Look for specific company/business related triggers
-        company_triggers = [
-            "dipietro", "audiology", "hearing", "appointment", "schedule", "clinic",
-            "office hours", "location", "address", "phone number", "contact info",
-            "services offered", "pricing", "cost", "insurance", "payment",
-            "hearing test", "hearing aid", "doctor", "audiologist"
-        ]
-        
-        for trigger in company_triggers:
-            if trigger in query_lower:
-                return True
-                
-        # Only use KB for longer, specific business questions
-        if (len(query.split()) > 8 and 
-            any(word in query_lower for word in ["appointment", "service", "clinic", "office", "schedule", "available"])):
-            return True
-            
-        return False
+        # Always return True - search KB for every query, no exceptions
+        return True
     
     def extract_text_from_file(self, file_path: str) -> str:
         """Extract text from various file formats."""
@@ -226,13 +195,15 @@ class RAGService:
         return doc
     
     def search_faqs(self, db: Session, query: str) -> List[Tuple[str, float, dict]]:
-        """Search FAQs for relevant information using simple text matching."""
-        # Always search FAQs regardless of query type - FAQs should be used for all questions
-        
+        """Search FAQs for relevant information - NO RESTRICTIONS, return ALL FAQs."""
         query_lower = query.lower()
         try:
             faqs = db.query(FAQ).all()
         except Exception as e:
+            return []
+        
+        # If no FAQs, return empty
+        if not faqs:
             return []
         
         faq_results = []
@@ -240,74 +211,90 @@ class RAGService:
             question_lower = faq.question.lower()
             answer_lower = faq.answer.lower()
             
-            # Calculate relevance score with better matching
+            # Calculate relevance score
             score = 0
             query_words = query_lower.split()
             
             # Exact question match gets highest score
             if query_lower in question_lower:
-                score = 100  # Very high score for exact match
+                score = 100
             else:
-                # Check for word matches with better scoring
+                # Check for word matches
                 for word in query_words:
-                    if len(word) > 2:  # Only consider words longer than 2 characters
+                    if len(word) > 2:
                         if word in question_lower:
-                            score += 3  # Higher weight for question matches
+                            score += 3
                         if word in answer_lower:
-                            score += 1  # Lower weight for answer matches
+                            score += 1
                 
                 # Check for partial matches
                 for word in query_words:
-                    if len(word) > 3:  # Only for longer words
+                    if len(word) > 3:
                         if any(word in q_word for q_word in question_lower.split()):
                             score += 2
                         if any(word in a_word for a_word in answer_lower.split()):
                             score += 1
             
-            # Normalize score (0-1 range)
-            if score > 0:
-                if score >= 100:  # Exact match
-                    distance = 0.0
-                else:
-                    normalized_score = min(1.0, score / max(1, len(query_words) * 3))
-                    distance = 1.0 - normalized_score
-                
-                faq_text = f"Q: {faq.question}\nA: {faq.answer}"
-                faq_results.append((
-                    faq_text, 
-                    distance, 
-                    {"source": "faq", "faq_id": faq.id, "question": faq.question}
-                ))
+            # Always include FAQ, distance determines ranking
+            if score >= 100:
+                distance = 0.0
+            else:
+                normalized_score = min(1.0, score / max(1, len(query_words) * 3)) if query_words else 0.5
+                distance = 1.0 - normalized_score
+            
+            faq_text = f"Q: {faq.question}\nA: {faq.answer}"
+            faq_results.append((
+                faq_text, 
+                distance, 
+                {"source": "faq", "faq_id": faq.id, "question": faq.question}
+            ))
         
-        # Sort by distance (lower is better) and return top results
+        # Sort by distance (lower is better) - return ALL FAQs, not just top 3
         faq_results.sort(key=lambda x: x[1])
-        return faq_results[:3]  # Return top 3 FAQ matches
+        return faq_results  # Return ALL FAQs, no limit
 
-    def search_knowledge_base(self, query: str, top_k: int = 3) -> List[Tuple[str, float, dict]]:
-        """Search the knowledge base for relevant information."""
-        if not self.should_use_knowledge_base(query):
+    def search_knowledge_base(self, query: str, top_k: int = 10) -> List[Tuple[str, float, dict]]:
+        """
+        Search the knowledge base for relevant information - NO RESTRICTIONS.
+        Increased top_k to 10 to get results from multiple knowledge base files.
+        """
+        try:
+            # Check if collection has any data
+            collection_count = self.collection.count()
+            if collection_count == 0:
+                print("Knowledge base is empty - no documents in ChromaDB")
+                return []
+            
+            query_embedding = self.embedding_model.encode(query).tolist()
+            
+            # Get more results to cover multiple knowledge base files
+            # Use at least 10 results or all available if less
+            n_results = min(max(top_k, 10), collection_count)
+            
+            results = self.collection.query(
+                query_embeddings=[query_embedding],
+                n_results=n_results,
+                include=["documents", "metadatas", "distances"]
+            )
+            
+            search_results = []
+            if results.get('documents') and results['documents'][0]:
+                for i in range(len(results['documents'][0])):
+                    doc_text = results['documents'][0][i]
+                    metadata = results['metadatas'][0][i]
+                    distance = results['distances'][0][i]
+                    search_results.append((doc_text, distance, metadata))
+                print(f"KB search found {len(search_results)} results from {len(set(m.get('document_id') for m in [r[2] for r in search_results] if m.get('document_id')))} documents for query: {query[:50]}")
+            else:
+                print(f"KB search returned no documents for query: {query[:50]}")
+            
+            return search_results
+        except Exception as e:
+            # Log error but don't fail the entire request
+            print(f"Error searching knowledge base: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return []
-        
-        
-        query_embedding = self.embedding_model.encode(query).tolist()
-        
-    
-        results = self.collection.query(
-            query_embeddings=[query_embedding],
-            n_results=top_k,
-            include=["documents", "metadatas", "distances"]
-        )
-        
-       
-        search_results = []
-        if results['documents'][0]:
-            for i in range(len(results['documents'][0])):
-                doc_text = results['documents'][0][i]
-                metadata = results['metadatas'][0][i]
-                distance = results['distances'][0][i]
-                search_results.append((doc_text, distance, metadata))
-        
-        return search_results
     
     def generate_rag_response(self, query: str, system_prompt: str, db: Session, history: list[dict] | None = None, messaging_config: dict | None = None) -> Tuple[str, bool]:
         """
@@ -342,25 +329,23 @@ class RAGService:
 
         q = contextualize_query(query, history)
 
-        # Always search FAQs first - they should be the primary source for all questions
+        # ALWAYS search FAQs and Knowledge Base - NO RESTRICTIONS
         faq_results = self.search_faqs(db, q)
+        print(f"FAQ search returned {len(faq_results)} results (ALL FAQs included)")
         
-        # If we have good FAQ results, use them
-        if faq_results and faq_results[0][1] < 0.5:  # Good FAQ match (distance < 0.5)
-            all_results = faq_results
-        else:
-            # If no good FAQ matches, check if we should use knowledge base
-            if self.should_use_knowledge_base(q):
-                kb_results = self.search_knowledge_base(q)
-                all_results = faq_results + kb_results
-                all_results.sort(key=lambda x: x[1])  # Sort by distance (lower is better)
-            else:
-                # No good FAQ matches and KB not needed, use regular chat
-                all_results = []
+        # ALWAYS search knowledge base - NO RESTRICTIONS
+        kb_results = self.search_knowledge_base(q, top_k=10)  # Get more results from multiple files
+        print(f"KB search returned {len(kb_results)} results from knowledge base")
+        
+        # Combine FAQ and KB results - include ALL results
+        all_results = faq_results + kb_results
+        # Sort by distance (lower is better) - best matches first
+        all_results.sort(key=lambda x: x[1])
+        
+        print(f"Total results (FAQ + KB): {len(all_results)} - NO RESTRICTIONS")
         
         if not all_results:
-            # SYSTEM PROMPT IS ABSOLUTE - use it exactly as provided without modification
-            # Only add minimal context about no KB results if needed
+            # No KB or FAQ results, but still use system prompt - NO RESTRICTIONS
             messages: list[dict] = [{"role": "system", "content": system_prompt}]
             if history:
                 messages.extend(history)
@@ -369,23 +354,38 @@ class RAGService:
             client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
             response = client.chat.completions.create(
                 model=messaging_config.get('ai_model', settings.OPENAI_MODEL),
-                temperature=0.3,  # Lower temperature for more consistent adherence to instructions
-                max_tokens=800,  # Generous limit - let system prompt control length
+                temperature=0.3,
+                max_tokens=800,
                 messages=messages,
             )
             return response.choices[0].message.content, False
 
-        # Build KB context
+        # Build KB context - NO RESTRICTIONS, include ALL results
+        # Accept ALL results regardless of distance - let the AI decide relevance
         context_parts: list[str] = []
+        seen_documents = set()  # Track which documents we've included to avoid duplicates
+        
         for doc_text, score, metadata in all_results:
-            if score < 0.7:
-                if metadata.get('source') == 'faq':
-                    context_parts.append(f"FAQ: {doc_text}")
-                else:
-                    context_parts.append(f"From {metadata.get('filename', 'document')}: {doc_text}")
+            # Include ALL results - NO distance threshold restrictions
+            source_key = None
+            if metadata.get('source') == 'faq':
+                source_key = f"faq_{metadata.get('faq_id')}"
+                context_parts.append(f"FAQ: {doc_text}")
+            else:
+                doc_id = metadata.get('document_id')
+                chunk_idx = metadata.get('chunk_index', 0)
+                source_key = f"doc_{doc_id}_chunk_{chunk_idx}"
+                filename = metadata.get('filename', 'document')
+                context_parts.append(f"From {filename}: {doc_text}")
+            
+            # Track to avoid exact duplicates
+            if source_key:
+                seen_documents.add(source_key)
+        
+        print(f"Including {len(context_parts)} context parts in response (NO distance restrictions)")
 
         if not context_parts:
-            # SYSTEM PROMPT IS ABSOLUTE - use it exactly as provided
+            # No context parts but still use system prompt - NO RESTRICTIONS
             messages: list[dict] = [{"role": "system", "content": system_prompt}]
             if history:
                 messages.extend(history)
@@ -394,25 +394,34 @@ class RAGService:
             client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
             response = client.chat.completions.create(
                 model=messaging_config.get('ai_model', settings.OPENAI_MODEL),
-                temperature=0.3,  # Lower temperature for more consistent adherence to instructions
-                max_tokens=800,  # Generous limit - let system prompt control length
+                temperature=0.3,
+                max_tokens=800,
                 messages=messages,
             )
             return response.choices[0].message.content, False
 
         context = "\n\n".join(context_parts)
         
-        # CRITICAL: System prompt comes FIRST and is ABSOLUTE
-        # KB context is supplementary information, NOT override instructions
+        # Count unique sources (documents and FAQs) for logging
+        unique_docs = set()
+        faq_count = 0
+        doc_chunk_count = 0
+        for _, _, metadata in all_results:
+            if metadata.get('source') == 'faq':
+                faq_count += 1
+            else:
+                doc_id = metadata.get('document_id')
+                if doc_id:
+                    unique_docs.add(doc_id)
+                doc_chunk_count += 1
+        
+        # Include system prompt and knowledge base - NO RESTRICTIONS
+        # System prompt and KB are both important, let the AI use both fully
         rag_system_prompt = (
             f"{system_prompt}\n\n"
-            f"===== RELEVANT KNOWLEDGE BASE INFORMATION =====\n"
+            f"===== KNOWLEDGE BASE INFORMATION (from {len(unique_docs)} document(s) and {faq_count} FAQ(s), total {len(all_results)} chunks) =====\n"
             f"{context}\n"
-            f"===== END OF KNOWLEDGE BASE INFORMATION =====\n\n"
-            f"CRITICAL REMINDER: Follow ALL instructions from your core identity above. "
-            f"Use the knowledge base information to enhance your answers, but maintain your communication style, "
-            f"response length, and tone exactly as specified in your core identity. "
-            f"The knowledge base is supplementary data only - your personality and response rules are ABSOLUTE."
+            f"===== END OF KNOWLEDGE BASE INFORMATION =====\n"
         )
 
         messages = [{"role": "system", "content": rag_system_prompt}]
@@ -423,8 +432,8 @@ class RAGService:
         client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
         response = client.chat.completions.create(
             model=messaging_config.get('ai_model', settings.OPENAI_MODEL),
-            temperature=0.3,  # Lower temperature for strict adherence to system prompt
-            max_tokens=800,  # Generous limit - let system prompt control the length
+            temperature=0.3,
+            max_tokens=800,
             messages=messages,
         )
         return response.choices[0].message.content, True

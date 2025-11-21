@@ -205,51 +205,50 @@
       flex:1;background:#fff;padding:12px 16px;
       border-radius:18px 18px 18px 4px;
       box-shadow:var(--cb-shadow);border:1px solid var(--cb-primary);
-      margin-top:4px;word-wrap:break-word;line-height:1.6;
+      margin-top:4px;
     }
-    .cb-message.assistant .cb-msg-text a{
-      color:var(--cb-primary);text-decoration:underline;
-      font-weight:500;cursor:pointer;
+    .cb-message a,.cb-message.assistant .cb-msg-text a{
+      color:var(--cb-primary);
+      text-decoration:underline;
+      cursor:pointer;
+      word-break:break-all;
     }
-    .cb-message.assistant .cb-msg-text a:hover{
+    .cb-message a:hover,.cb-message.assistant .cb-msg-text a:hover{
       color:var(--cb-primary-dark);
+      text-decoration:underline;
     }
-    .cb-message.assistant .cb-msg-text .cb-phone{
-      color:var(--cb-primary);font-weight:500;
-      cursor:pointer;text-decoration:none;
-      padding:2px 6px;border-radius:4px;
-      background:var(--cb-primary-light);transition:all 0.2s ease;
+    .cb-message strong,.cb-message.assistant .cb-msg-text strong{
+      font-weight:600;
     }
-    .cb-message.assistant .cb-msg-text .cb-phone:hover{
-      background:var(--cb-primary);color:#fff;
-    }
-    .cb-message.assistant .cb-msg-text ul,
-    .cb-message.assistant .cb-msg-text ol{
-      margin:8px 0;padding-left:20px;
-    }
-    .cb-message.assistant .cb-msg-text li{
-      margin:4px 0;
-    }
-    .cb-message.assistant .cb-msg-text strong,
-    .cb-message.assistant .cb-msg-text b{
-      font-weight:700;color:var(--cb-gray-900);
-    }
-    .cb-message.assistant .cb-msg-text em,
-    .cb-message.assistant .cb-msg-text i{
+    .cb-message em,.cb-message.assistant .cb-msg-text em{
       font-style:italic;
     }
-    .cb-message.assistant .cb-msg-text code{
-      background:var(--cb-gray-100);padding:2px 6px;
-      border-radius:4px;font-family:monospace;font-size:0.9em;
+    .cb-message code,.cb-message.assistant .cb-msg-text code{
+      background:rgba(0,0,0,0.1);
+      padding:2px 4px;
+      border-radius:3px;
+      font-family:monospace;
+      font-size:0.9em;
     }
-    .cb-message.assistant .cb-msg-text p{
-      margin:8px 0;
+    .cb-message pre,.cb-message.assistant .cb-msg-text pre{
+      background:rgba(0,0,0,0.05);
+      padding:8px;
+      border-radius:4px;
+      overflow-x:auto;
+      font-family:monospace;
+      font-size:0.9em;
+      margin:4px 0;
     }
-    .cb-message.assistant .cb-msg-text p:first-child{
-      margin-top:0;
+    .cb-message pre code,.cb-message.assistant .cb-msg-text pre code{
+      background:transparent;
+      padding:0;
     }
-    .cb-message.assistant .cb-msg-text p:last-child{
-      margin-bottom:0;
+    .cb-message ul,.cb-message ol,.cb-message.assistant .cb-msg-text ul,.cb-message.assistant .cb-msg-text ol{
+      margin:4px 0;
+      padding-left:20px;
+    }
+    .cb-message li,.cb-message.assistant .cb-msg-text li{
+      margin:2px 0;
     }
     
     .cb-input{
@@ -281,23 +280,6 @@
       transform:scale(1.05);box-shadow:var(--cb-shadow-md);
     }
     .cb-input button:active{transform:scale(0.95)}
-    
-    .cb-loader{
-      display:flex;flex-direction:column;align-items:center;justify-content:center;
-      flex:1;min-height:200px;padding:40px 20px;background:var(--cb-gray-50);
-    }
-    .cb-loader-spinner{
-      width:48px;height:48px;border:4px solid var(--cb-gray-200);
-      border-top-color:var(--cb-primary);border-radius:50%;
-      animation:cb-spin 0.8s linear infinite;
-    }
-    .cb-loader-text{
-      margin-top:16px;font-size:14px;color:var(--cb-gray-600);
-      font-weight:500;
-    }
-    @keyframes cb-spin{
-      to{transform:rotate(360deg);}
-    }
     
     .cb-branding{
       padding:12px 20px;font-size:12px;color:var(--cb-gray-400);
@@ -335,83 +317,135 @@
       if(res.status===404 && !/\/api\//.test(url)){ const apiUrl=url.replace(/(https?:\/\/[^/]+)(\/.*)?/, (m,origin,rest)=> origin + '/api' + (rest||'')); const r2=await fetch(apiUrl,Object.assign({mode:'cors'},o)); if(r2.ok) return r2.status===204? null : await r2.json(); }
       throw new Error((await res.text().catch(()=>''))||('HTTP '+res.status));
     }
-    // Format text with links, phone numbers, markdown, etc.
-    function formatMessageContent(text) {
-      if (!text) return '';
-      
-      let html = String(text);
-      
-      // STEP 1: Apply inline formatting FIRST (before splitting lines)
-      // Convert **bold** to <strong>
-      html = html.replace(/\*\*([^\*]+?)\*\*/g, '<strong>$1</strong>');
-      
-      // Convert *italic* to <em> (but not if part of **)
-      html = html.replace(/(?<!\*)\*([^\*\n]+?)\*(?!\*)/g, '<em>$1</em>');
-      
-      // Convert `code` to <code>
-      html = html.replace(/`([^`]+?)`/g, '<code>$1</code>');
-      
-      // STEP 2: Convert URLs to clickable links
-      html = html.replace(
-        /(https?:\/\/[^\s<]+[^\s<.,:;"')\]}>])/gi,
-        '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
-      );
-      
-      // STEP 3: Convert phone numbers to clickable (copy on click)
-      html = html.replace(
-        /\b(\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g,
-        function(match) {
-          const cleanPhone = match.replace(/[^\d+]/g, '');
-          return '<span class="cb-phone" data-phone="' + cleanPhone + '" onclick="navigator.clipboard.writeText(\'' + cleanPhone + '\');this.textContent=\'Copied!\';setTimeout(()=>this.textContent=\'' + match + '\',1500);">' + match + '</span>';
+    function linkifyText(text){
+      if(!text || typeof text!=='string') return null;
+      const urlRegex=/(https?:\/\/[^\s<>"{}|\\^`\[\]]+)|(www\.[^\s<>"{}|\\^`\[\]]+)/gi;
+      const parts=[];
+      let lastIndex=0;
+      let match;
+      const textStr=String(text);
+      while((match=urlRegex.exec(textStr))!==null){
+        if(match.index>lastIndex) parts.push({type:'text',content:textStr.substring(lastIndex,match.index)});
+        let url=match[0];
+        let displayText=url;
+        const trailingPunct=/[.,!?;:]+$/.exec(url);
+        if(trailingPunct){
+          url=url.substring(0,url.length-trailingPunct[0].length);
+          displayText=url;
         }
-      );
-      
-      // STEP 4: Handle line breaks and bullet points
-      const lines = html.split('\n');
-      let inList = false;
-      let formattedLines = [];
-      
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const bulletMatch = line.match(/^\s*[-*•]\s+(.+)$/);
-        
-        if (bulletMatch) {
-          if (!inList) {
-            formattedLines.push('<ul>');
-            inList = true;
-          }
-          formattedLines.push('<li>' + bulletMatch[1] + '</li>');
-        } else {
-          if (inList) {
-            formattedLines.push('</ul>');
-            inList = false;
-          }
-          if (line.trim()) {
-            formattedLines.push('<p>' + line + '</p>');
-          }
+        if(!url.match(/^https?:\/\//i)) url='https://'+url;
+        try{
+          new URL(url);
+          parts.push({type:'link',url:url,text:displayText,trailing:trailingPunct?trailingPunct[0]:''});
+        }catch(e){
+          parts.push({type:'text',content:match[0]});
         }
+        lastIndex=match.index+match[0].length;
       }
-      
-      if (inList) {
-        formattedLines.push('</ul>');
-      }
-      
-      html = formattedLines.join('');
-      
-      return html;
+      if(lastIndex<textStr.length) parts.push({type:'text',content:textStr.substring(lastIndex)});
+      if(parts.length===0) return null;
+      const frag=document.createDocumentFragment();
+      parts.forEach(p=>{
+        if(p.type==='link'){
+          const a=document.createElement('a');
+          a.href=p.url;
+          a.textContent=p.text;
+          a.target='_blank';
+          a.rel='noopener noreferrer';
+          a.style.color='var(--cb-primary)';
+          a.style.textDecoration='underline';
+          a.style.cursor='pointer';
+          frag.appendChild(a);
+          if(p.trailing) frag.appendChild(document.createTextNode(p.trailing));
+        }else{
+          frag.appendChild(document.createTextNode(p.content));
+        }
+      });
+      return frag;
     }
-    
+    function renderMarkdown(text){
+      if(!text || typeof text!=='string') return null;
+      let html=String(text);
+      const div=document.createElement('div');
+      html=html.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      html=html.replace(/```([\s\S]*?)```/g,(match,code)=>{
+        return '<pre><code>'+code+'</code></pre>';
+      });
+      const lines=html.split('\n');
+      const result=[];
+      let inList=false;
+      let listType='';
+      function processInline(text){
+        let processed=text;
+        processed=processed.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+        processed=processed.replace(/__(.+?)__/g,'<strong>$1</strong>');
+        processed=processed.replace(/\b\*([^*\n]+?)\*\b/g,'<em>$1</em>');
+        processed=processed.replace(/\b_([^_\n]+?)_\b/g,'<em>$1</em>');
+        processed=processed.replace(/`([^`\n]+?)`/g,'<code>$1</code>');
+        return processed;
+      }
+      for(let i=0;i<lines.length;i++){
+        let line=lines[i];
+        const ulMatch=line.match(/^([-*+])\s+(.+)$/);
+        const olMatch=line.match(/^(\d+\.)\s+(.+)$/);
+        if(ulMatch||olMatch){
+          const match=ulMatch||olMatch;
+          const type=ulMatch?'ul':'ol';
+          if(!inList||listType!==type){
+            if(inList) result.push('</'+listType+'>');
+            result.push('<'+type+'>');
+            inList=true;
+            listType=type;
+          }
+          let content=match[2]||match[3];
+          result.push('<li>'+processInline(content)+'</li>');
+        }else{
+          if(inList){
+            result.push('</'+listType+'>');
+            inList=false;
+          }
+          if(line.trim()){
+            result.push(processInline(line)+'<br>');
+          }else if(i<lines.length-1){
+            result.push('<br>');
+          }
+        }
+      }
+      if(inList) result.push('</'+listType+'>');
+      html=result.join('');
+      html=html.replace(/(https?:\/\/[^\s<>"{}|\\^`\[\]]+)|(www\.[^\s<>"{}|\\^`\[\]]+)/gi,(match)=>{
+        let url=match;
+        const trailingPunct=/[.,!?;:]+$/.exec(url);
+        if(trailingPunct) url=url.substring(0,url.length-trailingPunct[0].length);
+        if(!url.match(/^https?:\/\//i)) url='https://'+url;
+        try{
+          new URL(url);
+          const display=trailingPunct?match.substring(0,match.length-trailingPunct[0].length):match;
+          return '<a href="'+url+'" target="_blank" rel="noopener noreferrer">'+display+'</a>'+(trailingPunct?trailingPunct[0]:'');
+        }catch(e){
+          return match;
+        }
+      });
+      div.innerHTML=html;
+      const frag=document.createDocumentFragment();
+      while(div.firstChild) frag.appendChild(div.firstChild);
+      return frag;
+    }
     function addMessage(role,content){
+      if(!content) content='';
+      const contentStr=String(content);
       if(role==='assistant'){
         const m=el('div','cb-message assistant');
         const av=document.createElement('img'); av.className='cb-msg-avatar'; av.src=botAvatarUrl||DEFAULT_AVATAR; av.alt='';
         const t=el('div','cb-msg-text');
-        t.innerHTML = formatMessageContent(content);
+        const markdown=renderMarkdown(contentStr);
+        if(markdown && markdown.nodeType===11) t.appendChild(markdown); else t.textContent=contentStr;
         m.appendChild(av); m.appendChild(t);
         messages.appendChild(m);
       } else {
         const m=el('div','cb-message '+role);
-        m.textContent = content;
+        const markdown=renderMarkdown(contentStr);
+        if(markdown && markdown.nodeType===11) m.appendChild(markdown); else m.textContent=contentStr;
         messages.appendChild(m);
       }
       messages.scrollTop=messages.scrollHeight;
@@ -542,12 +576,10 @@
     
     document.body.appendChild(tooltip);
     
-    // Show tooltip with animation
-    setTimeout(() => {
-      tooltip.classList.add('show');
-    }, 100);
+    // Show tooltip immediately with animation
+    tooltip.classList.add('show');
     
-    // Auto-hide after 5 seconds
+    // Auto-hide after 4 seconds
     setTimeout(() => {
       if(tooltip && tooltip.parentNode) {
         tooltip.classList.remove('show');
@@ -555,9 +587,9 @@
           if(tooltip && tooltip.parentNode) {
             tooltip.remove();
           }
-        }, 300);
+        }, 200); // Reduced animation time
       }
-    }, 5000);
+    }, 4000);
   }
   
   function showUserFormScreen() {
@@ -724,7 +756,7 @@
         });
         
         const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Form submission timeout')), 10000)
+          setTimeout(() => reject(new Error('Form submission timeout')), 5000)
         );
         
         const response = await Promise.race([submitPromise, timeoutPromise]);
@@ -749,7 +781,7 @@
         
         // Show error message
         const errorMsg = el('div', 'cb-form-error');
-        errorMsg.textContent = `Failed to submit form: ${error.message}. Please try again.`;
+        errorMsg.textContent = 'Error submitting form. Please try again.';
         errorMsg.style.cssText = `
           color: #dc2626; background: #fef2f2; border: 1px solid #fecaca;
           padding: 12px; border-radius: 8px; margin-top: 16px;
@@ -761,12 +793,12 @@
         submitBtn.disabled = false;
         submitBtn.textContent = 'Continue';
         
-        // Remove error message after 5 seconds
+        // Remove error message after 3 seconds
         setTimeout(() => {
           if(errorMsg.parentNode) {
             errorMsg.remove();
           }
-        }, 5000);
+        }, 3000);
       }
     });
     
@@ -807,10 +839,8 @@
       console.log('starterQuestions enabled:', window.starterQuestions?.enabled);
       console.log('Calling showChatScreen()...');
       
-      // Ensure chat screen is visible
-      setTimeout(() => {
-        showChatScreen();
-      }, 50);
+      // Show chat screen immediately
+      showChatScreen();
       return;
     }
     
@@ -924,44 +954,25 @@
     console.log('starterScreen computed display:', window.getComputedStyle(starterScreen).display);
   }
   
-  async function showChatScreen() {
+  function showChatScreen() {
     console.log('=== SHOWING CHAT SCREEN ===');
     console.log('formScreen display:', formScreen.style.display);
     console.log('starterScreen display:', starterScreen.style.display);
     console.log('chatWrapper display before:', chatWrapper.style.display);
     
-    // Hide other screens first
+    // Load messages first
+    loadMessages().catch(e => console.error('Failed to load messages:', e));
+    
+    // Instant transition (no animation)
     formScreen.style.display = 'none';
     starterScreen.style.display = 'none';
-    
-    // Show chat with loader
     chatWrapper.style.display = 'flex';
     chatWrapper.style.opacity = '1';
     chatWrapper.style.transform = 'none';
+    
+    // Force visibility
     chatWrapper.style.visibility = 'visible';
     chatWrapper.style.position = 'relative';
-    
-    // Show loader in messages area
-    const loader = document.createElement('div');
-    loader.className = 'cb-loader';
-    loader.innerHTML = '<div class="cb-loader-spinner"></div><div class="cb-loader-text">Loading messages...</div>';
-    messages.innerHTML = '';
-    messages.appendChild(loader);
-    
-    // Load messages
-    try {
-      await loadMessages();
-      // Remove loader after messages are loaded
-      if(loader.parentNode) {
-        loader.remove();
-      }
-    } catch(e) {
-      console.error('Failed to load messages:', e);
-      // Remove loader even on error
-      if(loader.parentNode) {
-        loader.remove();
-      }
-    }
     
     console.log('chatWrapper display after:', chatWrapper.style.display);
     console.log('chatWrapper computed style:', window.getComputedStyle(chatWrapper).display);
@@ -1003,28 +1014,30 @@
   // Form functions removed
   async function refreshConfig(){ 
     try{ 
-      // PARALLEL LOADING: Load all 3 configs simultaneously for faster load time
-      const [wc, messagingConfig, starterQuestions] = await Promise.all([
-        api('widget-config').catch(e => { console.warn('Failed to load widget config:', e); return null; }),
-        api('messaging-config').catch(e => { console.warn('Failed to load messaging config:', e); return null; }),
-        api('starter-questions').catch(e => { console.warn('Failed to load starter questions:', e); return null; })
-      ]);
-      
+      const wc=await api('widget-config'); 
       if(!wc) return;
       
       // Set global widget config
       window.widgetConfig = wc;
       console.log('Widget config loaded:', wc);
       
-      // Set global messaging config
-      if(messagingConfig) {
+      // Load messaging configuration
+      let messagingConfig = null;
+      try {
+        messagingConfig = await api('messaging-config');
         window.messagingConfig = messagingConfig;
+      } catch (e) {
+        console.warn('Failed to load messaging config:', e);
       }
       
-      // Set global starter questions
-      if(starterQuestions) {
+      // Load starter questions configuration
+      let starterQuestions = null;
+      try {
+        starterQuestions = await api('starter-questions');
         window.starterQuestions = starterQuestions;
         console.log('Loaded starter questions:', starterQuestions);
+      } catch (e) {
+        console.warn('Failed to load starter questions:', e);
       } 
       
       // Update primary color
@@ -1130,7 +1143,7 @@
           console.log('Scheduling welcome message display');
           setTimeout(() => {
             showWelcomeMessage();
-          }, 1000); // Show after 1 second delay
+          }, 500); // Reduced delay for faster response
         }
       } else {
         console.log('No messaging config loaded');
@@ -1156,69 +1169,30 @@
       console.warn('[ChatbotWidget] Failed to refresh config:', e);
     } 
   }
-  // Pre-load config immediately on page load and cache it
-  let configLoaded = false;
-  let configLoadPromise = null;
-  
-  async function ensureConfigLoaded() {
-    if (configLoaded) return;
-    if (configLoadPromise) return configLoadPromise;
-    
-    configLoadPromise = refreshConfig().then(() => {
-      configLoaded = true;
-      console.log('[ChatbotWidget] Config pre-loaded and cached');
-    }).catch(err => {
-      console.warn('[ChatbotWidget] Config pre-load failed:', err);
-    });
-    
-    return configLoadPromise;
-  }
-  
-  // Pre-load config immediately when script loads
-  (async()=>{ await ensureConfigLoaded(); })();
-  
-  let poll=null; 
-  function startPoll(){ if(poll) return; poll=setInterval(()=>{ refreshConfig().catch(()=>{}); },20000);} 
-  function stopPoll(){ if(poll){ clearInterval(poll); poll=null; }}
-  
-  btn.onclick=async()=>{ 
+  (async()=>{ await refreshConfig(); })();
+    let poll=null; function startPoll(){ if(poll) return; poll=setInterval(refreshConfig,30000);} function stopPoll(){ if(poll){ clearInterval(poll); poll=null; }}
+    btn.onclick=async()=>{ 
       const was=panel.classList.contains('open'); 
       if(!was){ 
-        // Ensure config is loaded (should be instant if already cached)
-        await ensureConfigLoaded();
+        // Show panel immediately for better UX
+        panel.classList.toggle('open'); 
         
-        // Hide welcome tooltip when chat opens
+        // Hide welcome tooltip immediately
         const existingTooltip = document.querySelector('.cb-welcome-tooltip');
         if(existingTooltip) {
           existingTooltip.classList.remove('show');
-          setTimeout(() => {
-            if(existingTooltip && existingTooltip.parentNode) {
-              existingTooltip.remove();
-            }
-          }, 300);
+          existingTooltip.remove(); // Remove immediately instead of delayed
         }
-      } 
-      panel.classList.toggle('open'); 
-        if(!was) {
-          startPoll();
-          // Show user form screen after panel opens
-          setTimeout(() => {
-            console.log('Panel opened, showing user form screen');
-            showUserFormScreen();
-            
-            // Fallback: if no screen is shown after 500ms, show chat
-            setTimeout(() => {
-              const formVisible = formScreen.style.display === 'flex';
-              const starterVisible = starterScreen.style.display === 'flex';
-              const chatVisible = chatWrapper.style.display === 'flex';
-              
-              if(!formVisible && !starterVisible && !chatVisible) {
-                console.log('No screen visible, showing chat as fallback');
-                showChatScreen();
-              }
-            }, 500);
-          }, 100);
-        } else {
+        
+        // Show user form screen immediately
+        showUserFormScreen();
+        
+        // Refresh config in background (non-blocking)
+        refreshConfig().catch(()=>{});
+        
+        startPoll();
+      } else {
+        panel.classList.toggle('open'); 
         stopPoll(); 
       }
     };

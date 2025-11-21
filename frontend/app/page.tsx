@@ -7,6 +7,76 @@ const NavItem = ({ label, active=false, onClick }: { label: string; active?: boo
   <button type="button" onClick={onClick} className={clsx('sidebar-link w-full text-left', active && 'active')}>{label}</button>
 );
 
+function renderMarkdown(text: string): string {
+  if (!text || typeof text !== 'string') return '';
+  let html = String(text);
+  html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  html = html.replace(/```([\s\S]*?)```/g, (match, code) => {
+    return '<pre style="background:rgba(0,0,0,0.05);padding:8px;border-radius:4px;overflow-x:auto;font-family:monospace;font-size:0.9em;"><code>' + code + '</code></pre>';
+  });
+  const lines = html.split('\n');
+  const result: string[] = [];
+  let inList = false;
+  let listType = '';
+  
+  function processInline(text: string): string {
+    let processed = text;
+    processed = processed.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    processed = processed.replace(/__(.+?)__/g, '<strong>$1</strong>');
+    processed = processed.replace(/\b\*([^*\n]+?)\*\b/g, '<em>$1</em>');
+    processed = processed.replace(/\b_([^_\n]+?)_\b/g, '<em>$1</em>');
+    processed = processed.replace(/`([^`\n]+?)`/g, '<code style="background:rgba(0,0,0,0.1);padding:2px 4px;border-radius:3px;font-family:monospace;">$1</code>');
+    return processed;
+  }
+  
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+    const ulMatch = line.match(/^([-*+])\s+(.+)$/);
+    const olMatch = line.match(/^(\d+\.)\s+(.+)$/);
+    
+    if (ulMatch || olMatch) {
+      const match = ulMatch || olMatch;
+      const type = ulMatch ? 'ul' : 'ol';
+      if (!inList || listType !== type) {
+        if (inList) result.push('</' + listType + '>');
+        result.push('<' + type + ' style="margin:4px 0;padding-left:20px;">');
+        inList = true;
+        listType = type;
+      }
+      const content = match[2] || match[3];
+      result.push('<li style="margin:2px 0;">' + processInline(content) + '</li>');
+    } else {
+      if (inList) {
+        result.push('</' + listType + '>');
+        inList = false;
+      }
+      if (line.trim()) {
+        result.push(processInline(line) + '<br>');
+      } else if (i < lines.length - 1) {
+        result.push('<br>');
+      }
+    }
+  }
+  if (inList) result.push('</' + listType + '>');
+  
+  html = result.join('');
+  html = html.replace(/(https?:\/\/[^\s<>"{}|\\^`\[\]]+)|(www\.[^\s<>"{}|\\^`\[\]]+)/gi, (match) => {
+    let url = match;
+    const trailingPunct = /[.,!?;:]+$/.exec(url);
+    if (trailingPunct) url = url.substring(0, url.length - trailingPunct[0].length);
+    if (!url.match(/^https?:\/\//i)) url = 'https://' + url;
+    try {
+      new URL(url);
+      const display = trailingPunct ? match.substring(0, match.length - trailingPunct[0].length) : match;
+      return '<a href="' + url + '" target="_blank" rel="noopener noreferrer" style="color:var(--cb-primary, #3B82F6);text-decoration:underline;">' + display + '</a>' + (trailingPunct ? trailingPunct[0] : '');
+    } catch (e) {
+      return match;
+    }
+  });
+  
+  return html;
+}
+
 export default function Page() {
   const router = useRouter();
   const [trainingOpen, setTrainingOpen] = useState(false);
@@ -3191,15 +3261,15 @@ function InboxView({
   setSearchTerm: (term: string) => void;
 }){
 
+  const ADMIN_KEY = useMemo(() => process.env.NEXT_PUBLIC_ADMIN_API_KEY || '', []);
+
   // Fetch chats
   const fetchChats = useCallback(async () => {
     const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
     try {
       setLoading(true);
       const response = await fetch(`${API_BASE}/api/inbox/chats`, {
-        headers: {
-          'X-Admin-Key': 'admin123'
-        }
+        headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
       });
       if (response.ok) {
         const data = await response.json();
@@ -3213,7 +3283,7 @@ function InboxView({
     } finally {
       setLoading(false);
     }
-  }, [activeChat]);
+  }, [activeChat, ADMIN_KEY]);
 
   // Fetch users
   const fetchUsers = useCallback(async () => {
@@ -3221,9 +3291,7 @@ function InboxView({
     try {
       setLoading(true);
       const response = await fetch(`${API_BASE}/api/inbox/users`, {
-        headers: {
-          'X-Admin-Key': 'admin123'
-        }
+        headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
       });
       if (response.ok) {
         const data = await response.json();
@@ -3237,16 +3305,14 @@ function InboxView({
     } finally {
       setLoading(false);
     }
-  }, [activeUser]);
+  }, [activeUser, ADMIN_KEY]);
 
   // Fetch chat detail
   const fetchChatDetail = useCallback(async (chatId: number) => {
     const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
     try {
       const response = await fetch(`${API_BASE}/api/inbox/chats/${chatId}`, {
-        headers: {
-          'X-Admin-Key': 'admin123'
-        }
+        headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
       });
       if (response.ok) {
         const data = await response.json();
@@ -3255,16 +3321,14 @@ function InboxView({
     } catch (error) {
       console.error('Error fetching chat detail:', error);
     }
-  }, []);
+  }, [ADMIN_KEY]);
 
   // Fetch user detail
   const fetchUserDetail = useCallback(async (userId: number) => {
     const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
     try {
       const response = await fetch(`${API_BASE}/api/inbox/users/${userId}`, {
-        headers: {
-          'X-Admin-Key': 'admin123'
-        }
+        headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
       });
       if (response.ok) {
         const data = await response.json();
@@ -3273,7 +3337,7 @@ function InboxView({
     } catch (error) {
       console.error('Error fetching user detail:', error);
     }
-  }, []);
+  }, [ADMIN_KEY]);
 
   // Load data on mount and tab change
   useEffect(() => {
@@ -3329,6 +3393,60 @@ function InboxView({
     if (diffInMinutes < 10080) return `${Math.floor(diffInMinutes / 1440)}d ago`;
     if (diffInMinutes < 43800) return `${Math.floor(diffInMinutes / 10080)}w ago`;
     return `${Math.floor(diffInMinutes / 43800)}mo ago`;
+  };
+
+  // Delete chat
+  const deleteChat = async (chatId: number, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!confirm('Are you sure you want to delete this chat session? This will delete all messages in this chat.')) return;
+    
+    const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
+    try {
+      const response = await fetch(`${API_BASE}/api/inbox/chats/${chatId}`, {
+        method: 'DELETE',
+        headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
+      });
+      if (response.ok) {
+        setChats(chats.filter(c => c.id !== chatId));
+        if (activeChat?.id === chatId) {
+          setActiveChat(null);
+          setChatDetail(null);
+        }
+      } else {
+        alert('Failed to delete chat');
+      }
+    } catch (error) {
+      console.error('Error deleting chat:', error);
+      alert('Error deleting chat');
+    }
+  };
+
+  // Delete user
+  const deleteUser = async (userId: number, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!confirm('Are you sure you want to delete this user? This will delete the user and ALL their chat sessions and messages.')) return;
+    
+    const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
+    try {
+      const response = await fetch(`${API_BASE}/api/inbox/users/${userId}`, {
+        method: 'DELETE',
+        headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
+      });
+      if (response.ok) {
+        setUsers(users.filter(u => u.id !== userId));
+        if (activeUser?.id === userId) {
+          setActiveUser(null);
+          setUserDetail(null);
+        }
+        // Also refresh chats as they might be affected
+        await fetchChats();
+      } else {
+        alert('Failed to delete user');
+      }
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      alert('Error deleting user');
+    }
   };
 
   return (
@@ -3405,39 +3523,52 @@ function InboxView({
                 </div>
               ) : (
                 filteredChats.map(chat => (
-                  <button 
+                  <div
                     key={chat.id} 
-                    onClick={()=> setActiveChat(chat)} 
                     className={clsx(
-                      'w-full text-left px-4 py-4 transition-all duration-200 hover:bg-gray-50 group',
+                      'w-full transition-all duration-200 hover:bg-gray-50 group relative',
                       activeChat?.id === chat.id 
                         ? 'bg-blue-50 border-l-4 border-blue-500 shadow-sm' 
                         : 'hover:shadow-sm'
                     )}
-                  > 
-                    <div className="flex items-start justify-between gap-3 mb-2">
-                      <div className="font-semibold text-gray-900 truncate text-sm">{chat.title}</div>
-                      <div className="flex items-center gap-1.5 text-xs text-gray-600 bg-gray-50 px-2.5 py-1.5 rounded-lg border border-gray-200 shadow-sm">
-                        <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
-                        <span className="font-medium">{formatTimeAgo(chat.last_message_at || chat.created_at)}</span>
-                      </div>
-                    </div>
-                    <div className="text-sm text-gray-600 truncate mb-2 leading-relaxed">{chat.preview}</div>
-                    <div className="flex items-center gap-2 text-xs text-gray-500">
-                      <div className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 rounded-md border border-blue-200">
-                        <svg className="w-3 h-3 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9v-9m0-9v9" />
-                        </svg>
-                        <span className="text-blue-700 font-medium text-xs">{chat.ip_address || 'Browser'}</span>
-                      </div>
-                      {chat.user_name && (
-                        <div className="flex items-center gap-1">
-                          <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
-                          {chat.user_name}
+                  >
+                    <button 
+                      onClick={()=> setActiveChat(chat)} 
+                      className="w-full text-left px-4 py-4 pr-12"
+                    > 
+                      <div className="flex items-start justify-between gap-3 mb-2">
+                        <div className="font-semibold text-gray-900 truncate text-sm">{chat.title}</div>
+                        <div className="flex items-center gap-1.5 text-xs text-gray-600 bg-gray-50 px-2.5 py-1.5 rounded-lg border border-gray-200 shadow-sm">
+                          <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+                          <span className="font-medium">{formatTimeAgo(chat.last_message_at || chat.created_at)}</span>
                         </div>
-                      )}
-                    </div>
-                </button>
+                      </div>
+                      <div className="text-sm text-gray-600 truncate mb-2 leading-relaxed">{chat.preview}</div>
+                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <div className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 rounded-md border border-blue-200">
+                          <svg className="w-3 h-3 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9v-9m0-9v9" />
+                          </svg>
+                          <span className="text-blue-700 font-medium text-xs">{chat.ip_address || 'Browser'}</span>
+                        </div>
+                        {chat.user_name && (
+                          <div className="flex items-center gap-1">
+                            <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+                            {chat.user_name}
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                    <button
+                      onClick={(e) => deleteChat(chat.id, e)}
+                      className="absolute top-4 right-4 p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                      title="Delete chat"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
                 ))
               )}
             </div>
@@ -3459,9 +3590,16 @@ function InboxView({
                       <div className="text-xs text-gray-500">{chatDetail.messages?.length || 0} messages</div>
               </div>
                 </div>
-                  {/* <button className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors">
-                    Block IP
-                  </button> */}
+                  <button 
+                    onClick={() => activeChat && deleteChat(activeChat.id)}
+                    className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors flex items-center gap-2"
+                    title="Delete this chat session"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Delete Chat
+                  </button>
               </div>
                 <div className="p-6 space-y-4 max-h-[500px] overflow-y-auto bg-gray-50">
                   {chatDetail.messages?.map((message: any) => (
@@ -3477,7 +3615,10 @@ function InboxView({
                           ? 'bg-white border border-gray-200' 
                           : 'bg-gradient-to-br from-blue-500 to-blue-600 text-white'
                       )}>
-                        <div className="text-sm leading-relaxed">{message.content}</div>
+                        <div 
+                          className="text-sm leading-relaxed [&_strong]:font-semibold [&_em]:italic [&_code]:bg-black/10 [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded [&_code]:font-mono [&_code]:text-xs [&_pre]:bg-black/5 [&_pre]:p-2 [&_pre]:rounded [&_pre]:overflow-x-auto [&_pre]:my-2 [&_pre]:font-mono [&_pre]:text-xs [&_ul]:list-disc [&_ol]:list-decimal [&_ul]:ml-4 [&_ol]:ml-4 [&_li]:my-1 [&_a]:text-blue-600 [&_a]:underline [&_a]:hover:text-blue-800" 
+                          dangerouslySetInnerHTML={{__html: renderMarkdown(message.content)}} 
+                        />
                         <div className={clsx(
                           'text-xs mt-2 font-medium',
                           message.role === 'user' ? 'text-gray-500' : 'text-blue-100'
@@ -3582,7 +3723,7 @@ function InboxView({
             </div>
           </div>
           <div className="overflow-x-auto">
-            <div className="min-w-[640px] grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_120px] items-center bg-gradient-to-r from-gray-50 to-gray-100 px-6 py-4 text-sm font-semibold text-gray-700 border-b border-gray-200">
+            <div className="min-w-[640px] grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_120px_80px] items-center bg-gradient-to-r from-gray-50 to-gray-100 px-6 py-4 text-sm font-semibold text-gray-700 border-b border-gray-200">
               <div className="flex items-center gap-2">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -3607,6 +3748,7 @@ function InboxView({
                 </svg>
                 Chats
         </div>
+              <div className="text-right">Actions</div>
             </div>
             {loading ? (
               <div className="p-12 text-center">
@@ -3629,40 +3771,55 @@ function InboxView({
                 <div 
                   key={user.id} 
                   className={clsx(
-                    "min-w-[640px] px-6 py-4 grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_120px] items-center text-sm hover:bg-gray-50 cursor-pointer transition-all duration-200 group",
+                    "min-w-[640px] px-6 py-4 grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_120px_80px] items-center text-sm hover:bg-gray-50 transition-all duration-200 group relative",
                     index > 0 && "border-t border-gray-100"
                   )}
-                  onClick={() => setActiveUser(user)}
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xs font-semibold">
-                      {(user.name || 'U').charAt(0).toUpperCase()}
+                  <button
+                    onClick={() => setActiveUser(user)}
+                    className="contents cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xs font-semibold">
+                        {(user.name || 'U').charAt(0).toUpperCase()}
+                      </div>
+                      <div className="font-semibold text-gray-900">{user.name || 'Unknown'}</div>
                     </div>
-                    <div className="font-semibold text-gray-900">{user.name || 'Unknown'}</div>
-                  </div>
-                  <div className="text-gray-600 flex items-center gap-2">
-                    {user.email ? (
-                      <>
-                        <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    <div className="text-gray-600 flex items-center gap-2">
+                      {user.email ? (
+                        <>
+                          <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                          </svg>
+                          {user.email}
+                        </>
+                      ) : (
+                        <span className="text-gray-400 italic">Not provided</span>
+                      )}
+                    </div>
+                    <div className="text-gray-600 flex items-center gap-2">
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                      <span className="text-sm font-medium">{formatTimeAgo(user.last_activity)}</span>
+                    </div>
+                    <div className="text-right">
+                      <div className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                         </svg>
-                        {user.email}
-                      </>
-                    ) : (
-                      <span className="text-gray-400 italic">Not provided</span>
-                    )}
-                  </div>
-                  <div className="text-gray-600 flex items-center gap-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                    <span className="text-sm font-medium">{formatTimeAgo(user.last_activity)}</span>
-                  </div>
-                  <div className="text-right">
-                    <div className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-medium">
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                      </svg>
-                      {user.chat_count} chats
+                        {user.chat_count} chats
+                      </div>
                     </div>
+                  </button>
+                  <div className="text-right">
+                    <button
+                      onClick={(e) => deleteUser(user.id, e)}
+                      className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                      title="Delete user"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
               ))

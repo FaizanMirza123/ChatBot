@@ -1808,6 +1808,65 @@ async def debug_db_status(db: Session = Depends(get_db)):
 async def health():
     return {"status": "ok"}
 
+@app.get("/debug/kb-status")
+async def debug_kb_status(db: Session = Depends(get_db), _: bool = Depends(require_admin)):
+    """Debug endpoint to check knowledge base status and test search"""
+    try:
+        # Get document counts
+        doc_count = db.query(KnowledgeDocument).count()
+        processed_count = db.query(KnowledgeDocument).filter(KnowledgeDocument.processed == True).count()
+        chunk_count = db.query(DocumentChunk).count()
+        
+        # Check ChromaDB collection using existing RAG service
+        collection_count = rag_service.collection.count()
+        
+        # Get sample documents
+        docs = db.query(KnowledgeDocument).limit(5).all()
+        doc_list = [
+            {
+                "id": d.id,
+                "filename": d.filename,
+                "processed": d.processed,
+                "chunk_count": d.chunk_count,
+                "file_path": d.file_path
+            }
+            for d in docs
+        ]
+        
+        # Test search with a sample query
+        test_query = "test query"
+        kb_results = rag_service.search_knowledge_base(test_query, top_k=3)
+        search_working = len(kb_results) > 0
+        
+        return {
+            "knowledge_base_status": "active",
+            "total_documents": doc_count,
+            "processed_documents": processed_count,
+            "total_chunks": chunk_count,
+            "chromadb_collection_count": collection_count,
+            "sample_documents": doc_list,
+            "search_test": {
+                "query": test_query,
+                "results_found": len(kb_results),
+                "search_working": search_working,
+                "sample_results": [
+                    {
+                        "text_preview": r[0][:100] + "..." if len(r[0]) > 100 else r[0],
+                        "distance": round(r[1], 3),
+                        "metadata": r[2]
+                    }
+                    for r in kb_results[:2]
+                ] if kb_results else []
+            }
+        }
+    except Exception as e:
+        import traceback
+        return {
+            "knowledge_base_status": "error",
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
 # ---------------------- FAQ endpoints ----------------------
 
 @app.post("/faqs/upload-csv")
@@ -2039,6 +2098,57 @@ async def get_users(db: Session = Depends(get_db), _: bool = Depends(require_adm
         return user_list
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching users: {str(e)}")
+
+@app.delete("/api/inbox/chats/{chat_id}")
+async def delete_chat(chat_id: int, db: Session = Depends(get_db), _: bool = Depends(require_admin)):
+    """Delete a chat session and all its messages"""
+    try:
+        session = db.query(ChatSession).filter(ChatSession.id == chat_id).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="Chat not found")
+        
+        # Delete all messages for this session (CASCADE should handle this, but being explicit)
+        db.query(Message).filter(Message.session_id == chat_id).delete()
+        
+        # Delete the session
+        db.delete(session)
+        db.commit()
+        
+        return {"success": True, "message": "Chat deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error deleting chat: {str(e)}")
+
+@app.delete("/api/inbox/users/{user_id}")
+async def delete_user(user_id: int, db: Session = Depends(get_db), _: bool = Depends(require_admin)):
+    """Delete a user and all their sessions and messages"""
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Get all sessions for this user
+        sessions = db.query(ChatSession).filter(ChatSession.user_id == user_id).all()
+        
+        # Delete all messages for all sessions (CASCADE should handle this, but being explicit)
+        for session in sessions:
+            db.query(Message).filter(Message.session_id == session.id).delete()
+        
+        # Delete all sessions (CASCADE should handle messages)
+        db.query(ChatSession).filter(ChatSession.user_id == user_id).delete()
+        
+        # Delete the user
+        db.delete(user)
+        db.commit()
+        
+        return {"success": True, "message": "User and all associated data deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error deleting user: {str(e)}")
 
 @app.get("/api/inbox/users/{user_id}", response_model=UserDetailOut)
 async def get_user_detail(user_id: int, db: Session = Depends(get_db), _: bool = Depends(require_admin)):

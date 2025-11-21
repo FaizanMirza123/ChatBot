@@ -217,6 +217,39 @@
       color:var(--cb-primary-dark);
       text-decoration:underline;
     }
+    .cb-message strong,.cb-message.assistant .cb-msg-text strong{
+      font-weight:600;
+    }
+    .cb-message em,.cb-message.assistant .cb-msg-text em{
+      font-style:italic;
+    }
+    .cb-message code,.cb-message.assistant .cb-msg-text code{
+      background:rgba(0,0,0,0.1);
+      padding:2px 4px;
+      border-radius:3px;
+      font-family:monospace;
+      font-size:0.9em;
+    }
+    .cb-message pre,.cb-message.assistant .cb-msg-text pre{
+      background:rgba(0,0,0,0.05);
+      padding:8px;
+      border-radius:4px;
+      overflow-x:auto;
+      font-family:monospace;
+      font-size:0.9em;
+      margin:4px 0;
+    }
+    .cb-message pre code,.cb-message.assistant .cb-msg-text pre code{
+      background:transparent;
+      padding:0;
+    }
+    .cb-message ul,.cb-message ol,.cb-message.assistant .cb-msg-text ul,.cb-message.assistant .cb-msg-text ol{
+      margin:4px 0;
+      padding-left:20px;
+    }
+    .cb-message li,.cb-message.assistant .cb-msg-text li{
+      margin:2px 0;
+    }
     
     .cb-input{
       display:flex;gap:12px;padding:20px;
@@ -330,6 +363,74 @@
       });
       return frag;
     }
+    function renderMarkdown(text){
+      if(!text || typeof text!=='string') return null;
+      let html=String(text);
+      const div=document.createElement('div');
+      html=html.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      html=html.replace(/```([\s\S]*?)```/g,(match,code)=>{
+        return '<pre><code>'+code+'</code></pre>';
+      });
+      const lines=html.split('\n');
+      const result=[];
+      let inList=false;
+      let listType='';
+      function processInline(text){
+        let processed=text;
+        processed=processed.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+        processed=processed.replace(/__(.+?)__/g,'<strong>$1</strong>');
+        processed=processed.replace(/\b\*([^*\n]+?)\*\b/g,'<em>$1</em>');
+        processed=processed.replace(/\b_([^_\n]+?)_\b/g,'<em>$1</em>');
+        processed=processed.replace(/`([^`\n]+?)`/g,'<code>$1</code>');
+        return processed;
+      }
+      for(let i=0;i<lines.length;i++){
+        let line=lines[i];
+        const ulMatch=line.match(/^([-*+])\s+(.+)$/);
+        const olMatch=line.match(/^(\d+\.)\s+(.+)$/);
+        if(ulMatch||olMatch){
+          const match=ulMatch||olMatch;
+          const type=ulMatch?'ul':'ol';
+          if(!inList||listType!==type){
+            if(inList) result.push('</'+listType+'>');
+            result.push('<'+type+'>');
+            inList=true;
+            listType=type;
+          }
+          let content=match[2]||match[3];
+          result.push('<li>'+processInline(content)+'</li>');
+        }else{
+          if(inList){
+            result.push('</'+listType+'>');
+            inList=false;
+          }
+          if(line.trim()){
+            result.push(processInline(line)+'<br>');
+          }else if(i<lines.length-1){
+            result.push('<br>');
+          }
+        }
+      }
+      if(inList) result.push('</'+listType+'>');
+      html=result.join('');
+      html=html.replace(/(https?:\/\/[^\s<>"{}|\\^`\[\]]+)|(www\.[^\s<>"{}|\\^`\[\]]+)/gi,(match)=>{
+        let url=match;
+        const trailingPunct=/[.,!?;:]+$/.exec(url);
+        if(trailingPunct) url=url.substring(0,url.length-trailingPunct[0].length);
+        if(!url.match(/^https?:\/\//i)) url='https://'+url;
+        try{
+          new URL(url);
+          const display=trailingPunct?match.substring(0,match.length-trailingPunct[0].length):match;
+          return '<a href="'+url+'" target="_blank" rel="noopener noreferrer">'+display+'</a>'+(trailingPunct?trailingPunct[0]:'');
+        }catch(e){
+          return match;
+        }
+      });
+      div.innerHTML=html;
+      const frag=document.createDocumentFragment();
+      while(div.firstChild) frag.appendChild(div.firstChild);
+      return frag;
+    }
     function addMessage(role,content){
       if(!content) content='';
       const contentStr=String(content);
@@ -337,14 +438,14 @@
         const m=el('div','cb-message assistant');
         const av=document.createElement('img'); av.className='cb-msg-avatar'; av.src=botAvatarUrl||DEFAULT_AVATAR; av.alt='';
         const t=el('div','cb-msg-text');
-        const linked=linkifyText(contentStr);
-        if(linked && linked.nodeType===11) t.appendChild(linked); else t.textContent=contentStr;
+        const markdown=renderMarkdown(contentStr);
+        if(markdown && markdown.nodeType===11) t.appendChild(markdown); else t.textContent=contentStr;
         m.appendChild(av); m.appendChild(t);
         messages.appendChild(m);
       } else {
         const m=el('div','cb-message '+role);
-        const linked=linkifyText(contentStr);
-        if(linked && linked.nodeType===11) m.appendChild(linked); else m.textContent=contentStr;
+        const markdown=renderMarkdown(contentStr);
+        if(markdown && markdown.nodeType===11) m.appendChild(markdown); else m.textContent=contentStr;
         messages.appendChild(m);
       }
       messages.scrollTop=messages.scrollHeight;
