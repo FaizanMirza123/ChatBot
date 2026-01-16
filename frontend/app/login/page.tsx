@@ -38,17 +38,13 @@ export default function LoginPage() {
 
     try {
       // Try multiple endpoints to find the working one
-      const getEndpoints = () => {
-        if (typeof window === 'undefined') return ['/login', '/api/login'];
-        return [
-          '/login',
-          '/api/login',
-          `${window.location.protocol}//${window.location.hostname}:8000/login`,
-          `${window.location.protocol}//${window.location.hostname}:8000/api/login`
-        ];
-      };
+      const endpoints = [
+        '/login',
+        '/api/login', 
+        `${window.location.protocol}//${window.location.hostname}:8000/login`,
+        `${window.location.protocol}//${window.location.hostname}:8000/api/login`
+      ];
       
-      const endpoints = getEndpoints();
       let response = null;
       let lastError = null;
       
