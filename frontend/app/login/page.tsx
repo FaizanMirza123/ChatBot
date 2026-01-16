@@ -97,7 +97,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       {/* Instant redirect when already authenticated (runs before React hydration) */}
-      <Script id="auth-redirect" strategy="beforeInteractive">{`
+      <Script id="auth-redirect" strategy="afterInteractive">{`
         (function(){
           try {
             var p = window.location.pathname;
