@@ -18,7 +18,11 @@ export default function LoginPage() {
     const isLogout = params.get('logout');
     if (isLogout) {
       // Explicit logout request via query flag
-      try { localStorage.removeItem('admin_token'); } catch (_) {}
+      try { 
+        localStorage.removeItem('admin_token');
+        // Clear the cookie
+        document.cookie = 'admin_token=; path=/; max-age=0';
+      } catch (_) {}
       // Stay on login page, user can sign in again
       return;
     }
@@ -79,8 +83,12 @@ export default function LoginPage() {
       console.log('Login response:', data);
 
       if (data.success) {
-        // Store token in localStorage
+        // Store token in both localStorage and cookie
         localStorage.setItem('admin_token', data.token);
+        
+        // Set cookie for middleware (expires in 7 days)
+        document.cookie = `admin_token=${data.token}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Strict`;
+        
         // Redirect to main page
         router.push('/');
       } else {

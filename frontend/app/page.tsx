@@ -93,7 +93,11 @@ export default function Page() {
 
   // Logout function (hard redirect to ensure route transitions even if already on /login)
   const handleLogout = () => {
-    try { localStorage.removeItem('admin_token'); } catch (_) {}
+    try { 
+      localStorage.removeItem('admin_token');
+      // Clear the cookie
+      document.cookie = 'admin_token=; path=/; max-age=0';
+    } catch (_) {}
     if (typeof window !== 'undefined') {
       // Use a query flag so /login knows to clear any residual state
       window.location.href = '/login?logout=1';
