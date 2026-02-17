@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+.git/
+.cache/
+*.pth
+*.pt
+*.bin
+node_modules/
+app/uploads/
+app/chroma_db/
+*.log
