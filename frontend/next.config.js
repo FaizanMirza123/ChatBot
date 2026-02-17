@@ -13,7 +13,7 @@ const nextConfig = {
         headers: [
           {
             key: 'Access-Control-Allow-Origin',
-            value: 'https://chatbot.dipietroassociates.com/', // Replace with your backend domain
+            value: 'https://chatbot.dipietroassociates.com', // Replace with your backend domain
           },
         ],
       }
