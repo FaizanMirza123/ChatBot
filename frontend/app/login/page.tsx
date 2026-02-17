@@ -27,9 +27,17 @@ export default function LoginPage() {
       return;
     }
     // If already authenticated, avoid showing the login page
+    // Check BOTH localStorage AND cookie to prevent redirect loops
     try {
-      const token = localStorage.getItem('admin_token');
-      if (token) {
+      const hasLocalToken = !!localStorage.getItem('admin_token');
+      const hasCookie = document.cookie.split('; ').some(c => c.startsWith('admin_token='));
+      
+      // Only redirect if we have BOTH (meaning we're properly logged in)
+      // If we only have localStorage but no cookie, clear localStorage to break the loop
+      if (hasLocalToken && !hasCookie) {
+        console.log('Clearing orphaned localStorage token');
+        localStorage.removeItem('admin_token');
+      } else if (hasLocalToken && hasCookie) {
         router.replace('/');
       }
     } catch (_) {}
@@ -111,9 +119,17 @@ export default function LoginPage() {
             var p = window.location.pathname;
             var sp = new URLSearchParams(window.location.search||'');
             var isLogout = sp.get('logout');
-            var t = localStorage.getItem('admin_token');
-            if (p === '/login' && !isLogout && t) {
-              window.location.replace('/');
+            var hasLocalToken = !!localStorage.getItem('admin_token');
+            var hasCookie = document.cookie.split('; ').some(function(c) { return c.startsWith('admin_token='); });
+            
+            // Only redirect if we have BOTH tokens (properly logged in)
+            // If only localStorage but no cookie, clear it to break redirect loop
+            if (p === '/login' && !isLogout) {
+              if (hasLocalToken && !hasCookie) {
+                localStorage.removeItem('admin_token');
+              } else if (hasLocalToken && hasCookie) {
+                window.location.replace('/');
+              }
             }
           } catch (_) {}
         })();
