@@ -94,8 +94,8 @@ export default function LoginPage() {
         // Store token in both localStorage and cookie
         localStorage.setItem('admin_token', data.token);
         
-        // Set cookie for middleware (expires in 7 days)
-        document.cookie = `admin_token=${data.token}; path=/; max-age=${60 * 60 * 24 * 7}; SameSite=Strict`;
+        // Set cookie for middleware (expires in 30 days)
+        document.cookie = `admin_token=${data.token}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Strict`;
         
         // Redirect to main page
         router.push('/');

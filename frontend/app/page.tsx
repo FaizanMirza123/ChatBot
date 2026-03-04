@@ -86,8 +86,18 @@ export default function Page() {
   // Authentication check
   useEffect(() => {
     const token = localStorage.getItem('admin_token');
+    const hasCookie = document.cookie.split('; ').some(c => c.startsWith('admin_token='));
+
     if (!token) {
+      // No token at all → go to login
       router.push('/login');
+    } else if (!hasCookie) {
+      // localStorage token exists but cookie expired → clear stale token and go to login
+      localStorage.removeItem('admin_token');
+      router.push('/login');
+    } else {
+      // Both exist → refresh the cookie expiry so it stays valid on active use
+      document.cookie = `admin_token=${token}; path=/; max-age=${60 * 60 * 24 * 30}; SameSite=Strict`;
     }
   }, [router]);
 
