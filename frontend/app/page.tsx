@@ -268,12 +268,12 @@ export default function Page() {
         setStarterIsLoading(true);
         
         const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
-        const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY || '';
+        const ADMIN_KEY = typeof window !== 'undefined' ? localStorage.getItem('admin_token') || '' : '';
         
         // PARALLEL LOADING: Load ALL 6 configs simultaneously for instant tab switching
         const [botData, formData, promptData, appearanceData, messagingData, starterData] = await Promise.all([
           fetch(`${API_BASE}/bot-config`, {
-            headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
+            headers: ADMIN_KEY ? { 'Authorization': `Bearer ${ADMIN_KEY}` } : {}
           }).then(res => res.ok ? res.json() : null).catch(err => {
             console.error('Failed to load bot config:', err);
             setGeneralStatus({message: 'Failed to load bot configuration', type: 'error'});
@@ -281,7 +281,7 @@ export default function Page() {
           }),
           
           fetch(`${API_BASE}/widget-config`, {
-            headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
+            headers: ADMIN_KEY ? { 'Authorization': `Bearer ${ADMIN_KEY}` } : {}
           }).then(res => res.ok ? res.json() : null).catch(err => {
             console.error('Failed to load form config:', err);
             setUserFormStatus({message: 'Failed to load form configuration', type: 'error'});
@@ -289,14 +289,14 @@ export default function Page() {
           }),
           
           fetch(`${API_BASE}/system-prompt`, {
-            headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
+            headers: ADMIN_KEY ? { 'Authorization': `Bearer ${ADMIN_KEY}` } : {}
           }).then(res => res.ok ? res.json() : null).catch(err => {
             console.error('Failed to load system prompt:', err);
             return null;
           }),
           
           fetch(`${API_BASE}/widget-config`, {
-            headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
+            headers: ADMIN_KEY ? { 'Authorization': `Bearer ${ADMIN_KEY}` } : {}
           }).then(res => res.ok ? res.json() : null).catch(err => {
             console.error('Failed to load appearance config:', err);
             setAppearanceStatus({message: 'Failed to load appearance configuration', type: 'error'});
@@ -304,7 +304,7 @@ export default function Page() {
           }),
           
           fetch(`${API_BASE}/messaging-config`, {
-            headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
+            headers: ADMIN_KEY ? { 'Authorization': `Bearer ${ADMIN_KEY}` } : {}
           }).then(res => res.ok ? res.json() : null).catch(err => {
             console.error('Failed to load messaging config:', err);
             setMessagingStatus({message: 'Failed to load messaging configuration', type: 'error'});
@@ -312,7 +312,7 @@ export default function Page() {
           }),
           
           fetch(`${API_BASE}/starter-questions`, {
-            headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
+            headers: ADMIN_KEY ? { 'Authorization': `Bearer ${ADMIN_KEY}` } : {}
           }).then(res => res.ok ? res.json() : null).catch(err => {
             console.error('Failed to load starter questions:', err);
             setStarterStatus({message: 'Failed to load starter questions', type: 'error'});
@@ -426,13 +426,13 @@ export default function Page() {
     
     try {
       const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
-      const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY || '';
+      const ADMIN_KEY = typeof window !== 'undefined' ? localStorage.getItem('admin_token') || '' : '';
       
       const response = await fetch(`${API_BASE}/system-prompt`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {})
+          ...(ADMIN_KEY ? { 'Authorization': `Bearer ${ADMIN_KEY}` } : {})
         },
         body: JSON.stringify({ text: systemPrompt.trim() })
       });
@@ -459,17 +459,17 @@ export default function Page() {
     
     try {
       const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
-      const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY || '';
+      const ADMIN_KEY = typeof window !== 'undefined' ? localStorage.getItem('admin_token') || '' : '';
       
       const response = await fetch(`${API_BASE}/system-prompt`, {
         method: 'DELETE',
-        headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
+        headers: ADMIN_KEY ? { 'Authorization': `Bearer ${ADMIN_KEY}` } : {}
       });
       
       if (response.ok) {
         // Reload the system prompt to get the default
         const promptResponse = await fetch(`${API_BASE}/system-prompt`, {
-          headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
+          headers: ADMIN_KEY ? { 'Authorization': `Bearer ${ADMIN_KEY}` } : {}
         });
         if (promptResponse.ok) {
           const promptData = await promptResponse.json();
@@ -1216,7 +1216,7 @@ const SettingsGeneral = forwardRef<{saveBotConfig: () => void, discardChanges: (
 }, ref) => {
 
   const API_BASE = useMemo(()=> (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, ''), []);
-  const ADMIN_KEY = useMemo(()=> process.env.NEXT_PUBLIC_ADMIN_API_KEY || '', []);
+  const ADMIN_KEY = useMemo(()=> typeof window !== 'undefined' ? localStorage.getItem('admin_token') || '' : '', []);
 
   // Save bot config
   const saveBotConfig = useCallback(async () => {
@@ -1227,7 +1227,7 @@ const SettingsGeneral = forwardRef<{saveBotConfig: () => void, discardChanges: (
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          ...(ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {})
+          ...(ADMIN_KEY ? { 'Authorization': `Bearer ${ADMIN_KEY}` } : {})
         },
         body: JSON.stringify({ bot_name: botName })
       });
@@ -1352,7 +1352,7 @@ const SettingsAppearance = forwardRef<{saveWidgetConfig: () => void, discardChan
   const [showColorPicker, setShowColorPicker] = useState<boolean>(false);
 
   const API_BASE = useMemo(()=> (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, ''), []);
-  const ADMIN_KEY = useMemo(()=> process.env.NEXT_PUBLIC_ADMIN_API_KEY || '', []);
+  const ADMIN_KEY = useMemo(()=> typeof window !== 'undefined' ? localStorage.getItem('admin_token') || '' : '', []);
 
   const colorOptions = ['#6b4eff','#f97316','#f59e0b','#22c55e','#06b6d4','#3b82f6','#a855f7','#f43f5e','#8b5cf6'];
   const iconOptions = ['💬','🤖','🗨️','💭','📨','🔮','✨','🧠'];
@@ -1366,7 +1366,7 @@ const SettingsAppearance = forwardRef<{saveWidgetConfig: () => void, discardChan
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {})
+          ...(ADMIN_KEY ? { 'Authorization': `Bearer ${ADMIN_KEY}` } : {})
         },
         body: JSON.stringify({
           primary_color: color,
@@ -1586,7 +1586,7 @@ function UploadField({label, hint, type = 'avatar', initialUrl = null, onUploadS
   const [status, setStatus] = useState<{message: string, type: 'success' | 'error'} | null>(null);
   
   const API_BASE = useMemo(()=> (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, ''), []);
-  const ADMIN_KEY = useMemo(()=> process.env.NEXT_PUBLIC_ADMIN_API_KEY || '', []);
+  const ADMIN_KEY = useMemo(()=> typeof window !== 'undefined' ? localStorage.getItem('admin_token') || '' : '', []);
   
   // Update when initialUrl changes (loaded from config)
   useEffect(() => {
@@ -1622,7 +1622,7 @@ function UploadField({label, hint, type = 'avatar', initialUrl = null, onUploadS
       const endpoint = '/widget-config/avatar';
       const response = await fetch(`${API_BASE}${endpoint}`, {
         method: 'POST',
-        headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {},
+        headers: ADMIN_KEY ? { 'Authorization': `Bearer ${ADMIN_KEY}` } : {},
         body: formData
       });
 
@@ -2111,7 +2111,7 @@ const SettingsMessaging = forwardRef<{saveMessagingConfig: () => void, discardCh
   const { aiModel, conversational, strictFaq, responseLength, suggestFollowups, allowImages, showSources, postFeedback, multilingual, showWelcome, welcomeMessage, noSourceMessage, serverErrorMessage } = config;
 
   const API_BASE = useMemo(()=> (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, ''), []);
-  const ADMIN_KEY = useMemo(()=> process.env.NEXT_PUBLIC_ADMIN_API_KEY || '', []);
+  const ADMIN_KEY = useMemo(()=> typeof window !== 'undefined' ? localStorage.getItem('admin_token') || '' : '', []);
 
   // Save messaging config
   const saveMessagingConfig = useCallback(async () => {
@@ -2122,7 +2122,7 @@ const SettingsMessaging = forwardRef<{saveMessagingConfig: () => void, discardCh
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          ...(ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {})
+          ...(ADMIN_KEY ? { 'Authorization': `Bearer ${ADMIN_KEY}` } : {})
         },
         body: JSON.stringify({
           ai_model: aiModel,
@@ -2325,7 +2325,7 @@ function SourcesView(){
 
 function FilesSection(){
   const API_BASE = useMemo(()=> (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, ''), []);
-  const ADMIN_KEY = useMemo(()=> process.env.NEXT_PUBLIC_ADMIN_API_KEY || '', []);
+  const ADMIN_KEY = useMemo(()=> typeof window !== 'undefined' ? localStorage.getItem('admin_token') || '' : '', []);
   const [file, setFile] = useState<File|null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string>('');
@@ -2361,7 +2361,7 @@ function FilesSection(){
     fd.append('file', file);
     setBusy(true); setStatus('Uploading...');
     try{
-      const res = await fetch(`${API_BASE}/documents/upload`, { method:'POST', body: fd, headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : undefined });
+      const res = await fetch(`${API_BASE}/documents/upload`, { method:'POST', body: fd, headers: ADMIN_KEY ? { 'Authorization': `Bearer ${ADMIN_KEY}` } : undefined });
       const data = await res.json().catch(()=>({}));
       if(!res.ok){ setStatus(`Error: ${data.detail || res.statusText}`); }
       else { setStatus(`Uploaded: ${data.filename} (${data.chunk_count} chunks)`); setFile(null); await fetchDocs(); }
@@ -2372,7 +2372,7 @@ function FilesSection(){
   async function del(id:number){
     if(!confirm('Delete this document?')) return;
     try{
-      const res = await fetch(`${API_BASE}/documents/${id}`, { method:'DELETE', headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : undefined });
+      const res = await fetch(`${API_BASE}/documents/${id}`, { method:'DELETE', headers: ADMIN_KEY ? { 'Authorization': `Bearer ${ADMIN_KEY}` } : undefined });
       const data = await res.json().catch(()=>({}));
       if(!res.ok){ alert(data.detail || res.statusText); }
       else { await fetchDocs(); }
@@ -2381,7 +2381,7 @@ function FilesSection(){
 
   async function download(id:number, filename:string){
     try{
-      const res = await fetch(`${API_BASE}/documents/${id}/download`, { headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : undefined });
+      const res = await fetch(`${API_BASE}/documents/${id}/download`, { headers: ADMIN_KEY ? { 'Authorization': `Bearer ${ADMIN_KEY}` } : undefined });
       if(!res.ok){ 
         const data = await res.json().catch(()=>({}));
         alert(data.detail || res.statusText); 
@@ -2459,7 +2459,7 @@ function FilesSection(){
                   <Toggle value={!!visibility[d.id]} onChange={async(v)=>{
                     // optimistic update
                     setVisibility(prev=> ({...prev, [d.id]: v}));
-                    try{ const res= await fetch(`${API_BASE}/documents/${d.id}/visibility`, { method:'POST', headers: { 'Content-Type':'application/json', ...(ADMIN_KEY? { 'X-Api-Key': ADMIN_KEY }: {}) }, body: JSON.stringify({ is_public: v }) }); if(!res.ok){ setVisibility(prev=> ({...prev, [d.id]: !v})); }}catch(_){ setVisibility(prev=> ({...prev, [d.id]: !v})); }
+                    try{ const res= await fetch(`${API_BASE}/documents/${d.id}/visibility`, { method:'POST', headers: { 'Content-Type':'application/json', ...(ADMIN_KEY? { 'Authorization': `Bearer ${ADMIN_KEY}` }: {}) }, body: JSON.stringify({ is_public: v }) }); if(!res.ok){ setVisibility(prev=> ({...prev, [d.id]: !v})); }}catch(_){ setVisibility(prev=> ({...prev, [d.id]: !v})); }
                   }} />
                 </div>
                 <div>{d.processed ? <span className="inline-flex items-center rounded-full bg-green-100 text-green-700 text-[12px] px-2 py-0.5">Trained ({d.chunk_count})</span> : <span className="text-[12px] text-gray-500">Processing…</span>}</div>
@@ -2501,7 +2501,7 @@ function FilesSection(){
 
 function FaqsSection(){
   const API_BASE = useMemo(()=> (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, ''), []);
-  const ADMIN_KEY = useMemo(()=> process.env.NEXT_PUBLIC_ADMIN_API_KEY || '', []);
+  const ADMIN_KEY = useMemo(()=> typeof window !== 'undefined' ? localStorage.getItem('admin_token') || '' : '', []);
   const [csv, setCsv] = useState<File|null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState('');
@@ -2529,7 +2529,7 @@ function FaqsSection(){
     const fd = new FormData(); fd.append('file', csv);
     setBusy(true); setStatus('Uploading...');
     try{
-      const res = await fetch(`${API_BASE}/faqs/upload-csv`, { method:'POST', body: fd, headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : undefined });
+      const res = await fetch(`${API_BASE}/faqs/upload-csv`, { method:'POST', body: fd, headers: ADMIN_KEY ? { 'Authorization': `Bearer ${ADMIN_KEY}` } : undefined });
       const data = await res.json().catch(()=>({}));
       if(!res.ok){ setStatus(`Error: ${data.detail || res.statusText}`); }
       else { setStatus(`Imported ${data.created} FAQs${data.skipped?`, skipped ${data.skipped}`:''}`); setCsv(null); await loadFaqs(); }
@@ -2561,7 +2561,7 @@ function FaqsSection(){
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          ...(ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {})
+          ...(ADMIN_KEY ? { 'Authorization': `Bearer ${ADMIN_KEY}` } : {})
         },
         body: JSON.stringify({ question: editQuestion.trim(), answer: editAnswer.trim() })
       });
@@ -2585,7 +2585,7 @@ function FaqsSection(){
 
   async function delFaq(id:number){
     if(!confirm('Delete this FAQ?')) return;
-    try{ const res=await fetch(`${API_BASE}/faqs/${id}`, { method:'DELETE', headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : undefined }); if(res.ok){ await loadFaqs(); } }catch(_){ }
+    try{ const res=await fetch(`${API_BASE}/faqs/${id}`, { method:'DELETE', headers: ADMIN_KEY ? { 'Authorization': `Bearer ${ADMIN_KEY}` } : undefined }); if(res.ok){ await loadFaqs(); } }catch(_){ }
   }
 
   return (
@@ -3275,7 +3275,7 @@ function InboxView({
   setSearchTerm: (term: string) => void;
 }){
 
-  const ADMIN_KEY = useMemo(() => process.env.NEXT_PUBLIC_ADMIN_API_KEY || '', []);
+  const ADMIN_KEY = useMemo(() => typeof window !== 'undefined' ? localStorage.getItem('admin_token') || '' : '', []);
 
   // Fetch chats
   const fetchChats = useCallback(async () => {
@@ -3283,7 +3283,7 @@ function InboxView({
     try {
       setLoading(true);
       const response = await fetch(`${API_BASE}/api/inbox/chats`, {
-        headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
+        headers: ADMIN_KEY ? { 'Authorization': `Bearer ${ADMIN_KEY}` } : {}
       });
       if (response.ok) {
         const data = await response.json();
@@ -3305,7 +3305,7 @@ function InboxView({
     try {
       setLoading(true);
       const response = await fetch(`${API_BASE}/api/inbox/users`, {
-        headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
+        headers: ADMIN_KEY ? { 'Authorization': `Bearer ${ADMIN_KEY}` } : {}
       });
       if (response.ok) {
         const data = await response.json();
@@ -3326,7 +3326,7 @@ function InboxView({
     const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
     try {
       const response = await fetch(`${API_BASE}/api/inbox/chats/${chatId}`, {
-        headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
+        headers: ADMIN_KEY ? { 'Authorization': `Bearer ${ADMIN_KEY}` } : {}
       });
       if (response.ok) {
         const data = await response.json();
@@ -3342,7 +3342,7 @@ function InboxView({
     const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
     try {
       const response = await fetch(`${API_BASE}/api/inbox/users/${userId}`, {
-        headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
+        headers: ADMIN_KEY ? { 'Authorization': `Bearer ${ADMIN_KEY}` } : {}
       });
       if (response.ok) {
         const data = await response.json();
@@ -3418,7 +3418,7 @@ function InboxView({
     try {
       const response = await fetch(`${API_BASE}/api/inbox/chats/${chatId}`, {
         method: 'DELETE',
-        headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
+        headers: ADMIN_KEY ? { 'Authorization': `Bearer ${ADMIN_KEY}` } : {}
       });
       if (response.ok) {
         setChats(chats.filter(c => c.id !== chatId));
@@ -3444,7 +3444,7 @@ function InboxView({
     try {
       const response = await fetch(`${API_BASE}/api/inbox/users/${userId}`, {
         method: 'DELETE',
-        headers: ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {}
+        headers: ADMIN_KEY ? { 'Authorization': `Bearer ${ADMIN_KEY}` } : {}
       });
       if (response.ok) {
         setUsers(users.filter(u => u.id !== userId));
@@ -3876,9 +3876,9 @@ function AnalyticsView(){
       try {
         setLoading(true);
         const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
-        const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY || '';
+        const ADMIN_KEY = typeof window !== 'undefined' ? localStorage.getItem('admin_token') || '' : '';
         
-        const headers = ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {};
+        const headers = ADMIN_KEY ? { 'Authorization': `Bearer ${ADMIN_KEY}` } : {};
         
         // Load summary data
         const summaryResponse = await fetch(`${API_BASE}/api/analytics/summary`, { headers });
@@ -3914,9 +3914,9 @@ function AnalyticsView(){
     try {
       setExporting(true);
       const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
-      const ADMIN_KEY = process.env.NEXT_PUBLIC_ADMIN_API_KEY || '';
+      const ADMIN_KEY = typeof window !== 'undefined' ? localStorage.getItem('admin_token') || '' : '';
       
-      const headers = ADMIN_KEY ? { 'X-Api-Key': ADMIN_KEY } : {};
+      const headers = ADMIN_KEY ? { 'Authorization': `Bearer ${ADMIN_KEY}` } : {};
       
       const response = await fetch(`${API_BASE}/api/analytics/export?format=${format}`, { headers });
       if (response.ok) {

@@ -20,7 +20,12 @@ class Settings(BaseSettings):
     # Static Login Credentials
     ADMIN_USERNAME: str = "admin"
     ADMIN_PASSWORD: str = "admin123"
-    
+
+    # JWT settings
+    JWT_SECRET_KEY: str = "change-me-use-a-long-random-secret-in-production"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRY_HOURS: int = 8
+
     # Chat history settings
     CHAT_HISTORY_MAX_TOKENS: int = 3000  # max tokens for conversation history (leaves room for system prompt + new message + response)
 

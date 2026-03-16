@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Header, Response
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Header, Response, Request
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,6 +6,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 from typing import List
 from openai import OpenAI
+from jose import jwt, JWTError
+from datetime import datetime, timedelta, timezone
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from config import settings
 from db import get_db, Base, engine
 from models import Prompt, KnowledgeDocument, Message, User, Session as ChatSession, Lead, WidgetConfig, FAQ, DocumentVisibility, MessagingConfig, StarterQuestions, FormResponse, Form
@@ -22,6 +27,9 @@ import csv
 from io import StringIO
 
 app = FastAPI()
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 client = OpenAI(api_key=settings.OPENAI_API_KEY)
 rag_service = RAGService()
 
@@ -40,7 +48,6 @@ origins = settings.cors_origins_parsed or ["*"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_origin_regex=r".*",  # allow file:// (Origin: null) and any host during dev
     allow_credentials=False if origins == ["*"] else True,
     allow_methods=["*"],
     allow_headers=["*"]
@@ -101,9 +108,35 @@ DEFAULT_SYSTEM_PROMPT = "You are a helpful AI assistant. Answer questions clearl
 in_memory_system_prompt = DEFAULT_SYSTEM_PROMPT
 use_database = True
 
+def require_admin(
+    authorization: str | None = Header(default=None),
+    x_api_key: str | None = Header(default=None),
+):
+    # Option 1: JWT Bearer token (from login flow)
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ", 1)[1]
+        try:
+            jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+            return True
+        except JWTError:
+            raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    # Option 2: Static API key (server-to-server / widget clients)
+    if settings.ADMIN_API_KEY and x_api_key == settings.ADMIN_API_KEY:
+        return True
+
+    raise HTTPException(status_code=401, detail="Unauthorized")
+
+def get_current_system_prompt(db: Session) -> str:
+    """Get the current system prompt from database or return default"""
+    prompt = db.query(Prompt).filter(Prompt.is_default == True).first()
+    if prompt:
+        return prompt.text
+    return DEFAULT_SYSTEM_PROMPT
+
 # List all form entries (leads) for admin table
 @app.get("/form-entries")
-async def list_form_entries(db: Session = Depends(get_db)):
+async def list_form_entries(db: Session = Depends(get_db), _: bool = Depends(require_admin)):
     leads = db.query(Lead).order_by(Lead.created_at.desc()).all()
     entries = [
         {
@@ -116,22 +149,6 @@ async def list_form_entries(db: Session = Depends(get_db)):
         for l in leads
     ]
     return JSONResponse(content={"entries": entries})
-
-def get_current_system_prompt(db: Session) -> str:
-    """Get the current system prompt from database or return default"""
-    prompt = db.query(Prompt).filter(Prompt.is_default == True).first()
-    if prompt:
-        return prompt.text
-    return DEFAULT_SYSTEM_PROMPT
-
-
-def require_admin(x_api_key: str | None = Header(default=None)):
-    if settings.ADMIN_API_KEY and x_api_key == settings.ADMIN_API_KEY:
-        return True
-    if settings.ADMIN_API_KEY:
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    # If no ADMIN_API_KEY configured, allow (dev mode)
-    return True
 
 # ----- Per-client isolation helpers -----
 def _get_client_session(db: Session, client_id: str) -> ChatSession | None:
@@ -271,7 +288,8 @@ async def get_messages(x_client_id: str | None = Header(default=None), db: Sessi
 # Removed multi-session management endpoints in single-session mode
 
 @app.post("/chat", response_model=ChatResponseOut)
-async def chat(chat_data: ChatIn, x_client_id: str | None = Header(default=None), x_forwarded_for: str | None = Header(default=None), x_real_ip: str | None = Header(default=None), db: Session = Depends(get_db)):
+@limiter.limit("30/minute")
+async def chat(request: Request, chat_data: ChatIn, x_client_id: str | None = Header(default=None), x_forwarded_for: str | None = Header(default=None), x_real_ip: str | None = Header(default=None), db: Session = Depends(get_db)):
     """Chat endpoint with token-budgeted message history.
     - Loads recent messages for the session within token limits
     - Persists the new user message and the assistant reply
@@ -893,8 +911,9 @@ async def submit_dynamic_form(payload: dict, x_client_id: str | None = Header(de
 
 # Chat/message aliases under /api for embedders that prefix paths
 @app.post("/api/chat", response_model=ChatResponseOut)
-async def chat_api(chat_data: ChatIn, x_client_id: str | None = Header(default=None), db: Session = Depends(get_db)):
-    return await chat(chat_data=chat_data, x_client_id=x_client_id, db=db)
+@limiter.limit("30/minute")
+async def chat_api(request: Request, chat_data: ChatIn, x_client_id: str | None = Header(default=None), db: Session = Depends(get_db)):
+    return await chat(request=request, chat_data=chat_data, x_client_id=x_client_id, db=db)
 
 @app.get("/api/messages")
 async def get_messages_api(x_client_id: str | None = Header(default=None), db: Session = Depends(get_db)):
@@ -939,12 +958,20 @@ async def reset_system_prompt(db: Session = Depends(get_db), _: bool = Depends(r
 async def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db), _: bool = Depends(require_admin)):
     """Upload and process a document for the knowledge base"""
     try:
-        # Validate file type
+        # Validate file extension
         allowed_extensions = {'.pdf', '.docx', '.txt'}
         file_extension = Path(file.filename).suffix.lower()
         if file_extension not in allowed_extensions:
             raise HTTPException(status_code=400, detail=f"Unsupported file type. Allowed: {', '.join(allowed_extensions)}")
-        
+
+        # Validate magic bytes to prevent extension spoofing
+        header = await file.read(8)
+        await file.seek(0)
+        if file_extension == '.pdf' and not header.startswith(b'%PDF'):
+            raise HTTPException(status_code=400, detail="File content does not match PDF format")
+        if file_extension == '.docx' and not header.startswith(b'PK\x03\x04'):
+            raise HTTPException(status_code=400, detail="File content does not match DOCX format")
+
         # Save uploaded file
         file_path = UPLOAD_DIR / file.filename
         with open(file_path, "wb") as buffer:
@@ -1741,33 +1768,32 @@ async def get_chat_interface():
     return html_content
 
 @app.post("/api/login", response_model=LoginOut)
-async def login(login_data: LoginIn):
-    """Login endpoint with static credentials from environment"""
-    try:
-        if login_data.username == settings.ADMIN_USERNAME and login_data.password == settings.ADMIN_PASSWORD:
-            # Generate a simple token (in production, use proper JWT)
-            import hashlib
-            import time
-            token_data = f"{login_data.username}:{time.time()}:{settings.ADMIN_PASSWORD}"
-            token = hashlib.sha256(token_data.encode()).hexdigest()
-            return LoginOut(success=True, message="Login successful", token=token)
-        else:
-            return LoginOut(success=False, message="Invalid credentials", token=None)
-    except Exception as e:
-        return LoginOut(success=False, message=f"Login error: {str(e)}", token=None)
+@limiter.limit("10/minute")
+async def login(request: Request, login_data: LoginIn):
+    """Login endpoint — issues a signed JWT on success."""
+    if login_data.username == settings.ADMIN_USERNAME and login_data.password == settings.ADMIN_PASSWORD:
+        now = datetime.now(timezone.utc)
+        expiry = now + timedelta(hours=settings.JWT_EXPIRY_HOURS)
+        token = jwt.encode(
+            {"sub": login_data.username, "exp": expiry, "iat": now},
+            settings.JWT_SECRET_KEY,
+            algorithm=settings.JWT_ALGORITHM,
+        )
+        return LoginOut(success=True, message="Login successful", token=token)
+    raise HTTPException(status_code=401, detail="Invalid credentials")
 
 @app.post("/login", response_model=LoginOut)
-async def login_alt(login_data: LoginIn):
+@limiter.limit("10/minute")
+async def login_alt(request: Request, login_data: LoginIn):
     """Alternative login endpoint (for reverse proxy compatibility)"""
-    print(f"🔐 LOGIN ATTEMPT: username={login_data.username}, password={'*' * len(login_data.password)}")
-    return await login(login_data)
+    return await login(request=request, login_data=login_data)
 
 @app.get("/api")
 async def root():
     return {"message": "ChatBot API is running"}
 
 @app.get("/debug/db-status")
-async def debug_db_status(db: Session = Depends(get_db)):
+async def debug_db_status(db: Session = Depends(get_db), _: bool = Depends(require_admin)):
     """Debug endpoint to check database status"""
     try:
         import os

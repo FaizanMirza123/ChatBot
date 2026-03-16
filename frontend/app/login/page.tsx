@@ -74,6 +74,11 @@ export default function LoginPage() {
           if (response.ok) {
             console.log('Success with endpoint:', endpoint);
             break;
+          } else if (response.status === 401) {
+            // Definitive auth failure — stop trying other endpoints
+            const errData = await response.json().catch(() => ({}));
+            setError(errData.detail || 'Invalid credentials');
+            return;
           } else {
             console.log('Failed with endpoint:', endpoint, response.status);
           }
