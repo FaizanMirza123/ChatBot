@@ -249,9 +249,12 @@ class RAGService:
                 {"source": "faq", "faq_id": faq.id, "question": faq.question}
             ))
         
-        # Sort by distance (lower is better) - return ALL FAQs, not just top 3
+        # Sort by distance (lower is better) - only return relevant FAQs
         faq_results.sort(key=lambda x: x[1])
-        return faq_results  # Return ALL FAQs, no limit
+        # Filter to only FAQs with at least some word match (distance < 1.0 means score > 0)
+        # This prevents irrelevant FAQs from polluting the context on short messages like "yup"
+        relevant = [r for r in faq_results if r[1] < 0.95]
+        return relevant if relevant else faq_results[:3]  # fallback: top 3 if nothing matched
 
     def search_knowledge_base(self, query: str, top_k: int = 10) -> List[Tuple[str, float, dict]]:
         """
@@ -321,9 +324,10 @@ class RAGService:
                         if m.get("role") == "assistant":
                             prev = m.get("content", "").strip()
                             if prev:
+                                # Truncate previous response to avoid polluting KB search with unrelated terms
+                                prev_short = prev[:200] + ("..." if len(prev) > 200 else "")
                                 return (
-                                    f"The user replied: '{q}'. This follows your previous message: '{prev}'. "
-                                    f"Respond briefly and take the next helpful step."
+                                    f"Continue conversation - user said '{q}' after: '{prev_short}'"
                                 )
             return q
 
