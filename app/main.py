@@ -377,6 +377,7 @@ async def chat(request: Request, chat_data: ChatIn, x_client_id: str | None = He
             'conversational': messaging_cfg.conversational,
             'strict_faq': messaging_cfg.strict_faq,
             'response_length': messaging_cfg.response_length,
+            'suggest_followups': messaging_cfg.suggest_followups,
             'welcome_message': messaging_cfg.welcome_message,
             'server_error_message': messaging_cfg.server_error_message
         }

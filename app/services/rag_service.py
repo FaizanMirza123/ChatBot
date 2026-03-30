@@ -251,10 +251,9 @@ class RAGService:
         
         # Sort by distance (lower is better) - only return relevant FAQs
         faq_results.sort(key=lambda x: x[1])
-        # Filter to only FAQs with at least some word match (distance < 1.0 means score > 0)
-        # This prevents irrelevant FAQs from polluting the context on short messages like "yup"
-        relevant = [r for r in faq_results if r[1] < 0.95]
-        return relevant if relevant else faq_results[:3]  # fallback: top 3 if nothing matched
+        # Only return FAQs with at least some word match (distance < 0.95 means score > 0)
+        # Returning irrelevant FAQs pollutes the AI context and causes wrong responses
+        return [r for r in faq_results if r[1] < 0.95]
 
     def search_knowledge_base(self, query: str, top_k: int = 10) -> List[Tuple[str, float, dict]]:
         """
@@ -331,6 +330,28 @@ class RAGService:
                                 )
             return q
 
+        # Extract and apply messaging settings
+        response_length = messaging_config.get('response_length', 'Medium')
+        max_tokens = {'Short': 300, 'Medium': 500, 'Long': 800}.get(response_length, 500)
+
+        strict_faq = messaging_config.get('strict_faq', False)
+        conversational = messaging_config.get('conversational', True)
+        suggest_followups = messaging_config.get('suggest_followups', False)
+
+        behavior_instructions = []
+        if strict_faq:
+            behavior_instructions.append(
+                "STRICT MODE: Only answer using information from the Knowledge Base provided. "
+                "If the topic is not covered in the knowledge base, redirect the user to the contact page."
+            )
+        if not conversational:
+            behavior_instructions.append("Keep responses professional and focused. Avoid casual chitchat.")
+        if suggest_followups:
+            behavior_instructions.append(
+                "After answering, suggest 1-2 brief follow-up questions the user might find helpful, "
+                "formatted naturally (e.g. 'You might also want to know: ...')."
+            )
+
         # Use contextualized query for KB/FAQ search only — send original query to OpenAI
         search_q = contextualize_query(query, history)
 
@@ -345,14 +366,17 @@ class RAGService:
         client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
 
         if not all_results:
-            messages: list[dict] = [{"role": "system", "content": system_prompt}]
+            final_prompt = system_prompt
+            if behavior_instructions:
+                final_prompt += "\n\n" + "\n".join(behavior_instructions)
+            messages: list[dict] = [{"role": "system", "content": final_prompt}]
             if history:
                 messages.extend(history)
             messages.append({"role": "user", "content": query})
             response = client.chat.completions.create(
                 model=messaging_config.get('ai_model', settings.OPENAI_MODEL),
                 temperature=0.3,
-                max_tokens=500,
+                max_tokens=max_tokens,
                 messages=messages,
             )
             return response.choices[0].message.content, False
@@ -379,6 +403,8 @@ class RAGService:
             f"{context}\n"
             f"===== END KNOWLEDGE BASE =====\n"
         )
+        if behavior_instructions:
+            rag_system_prompt += "\n" + "\n".join(behavior_instructions)
 
         messages = [{"role": "system", "content": rag_system_prompt}]
         if history:
@@ -388,7 +414,7 @@ class RAGService:
         response = client.chat.completions.create(
             model=messaging_config.get('ai_model', settings.OPENAI_MODEL),
             temperature=0.3,
-            max_tokens=500,
+            max_tokens=max_tokens,
             messages=messages,
         )
         return response.choices[0].message.content, True
