@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//etc/nginx/sites-available/**)",
+      "Read(//etc/nginx/**)"
+    ]
+  }
+}

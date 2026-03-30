@@ -1822,14 +1822,16 @@ const SettingsStarter = forwardRef<{
 
   const saveStarterQuestions = useCallback(async () => {
     const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
+    const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
     setIsSaving(true);
     setStatus(null);
-    
+
     try {
       const response = await fetch(`${API_BASE}/starter-questions`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
           questions: questions.filter(q => q.trim()),
@@ -4215,6 +4217,7 @@ const SettingsUserForm = forwardRef<{
   // Save form configuration
   const saveUserFormConfig = useCallback(async () => {
     const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || 'https://chatbot.dipietroassociates.com/api').replace(/\/$/, '');
+    const token = typeof window !== 'undefined' ? localStorage.getItem('admin_token') : null;
     try {
       setIsSaving(true);
       setStatus(null);
@@ -4223,6 +4226,7 @@ const SettingsUserForm = forwardRef<{
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
           form_enabled: formEnabled,
