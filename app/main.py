@@ -315,18 +315,10 @@ async def chat(request: Request, chat_data: ChatIn, x_client_id: str | None = He
             email=chat_data.email, 
             ip_address=ip_address
         )
-        raw_history = _fetch_history_by_token_budget(db, sess.id)
-
-        # Add system prompt and trim to token budget
-        messages_with_system = [{"role": "system", "content": system_prompt}] + raw_history
-        history = trim_history_to_token_budget(
-            messages_with_system,
-            settings.CHAT_HISTORY_MAX_TOKENS,
-            settings.OPENAI_MODEL,
-        )
-
-        # Remove system prompt from history (RAG service will add it back)
-        history = [msg for msg in history if msg.get("role") != "system"]
+        # raw_history is already token-budgeted by _fetch_history_by_token_budget.
+        # Do NOT re-trim with the system prompt included — the system prompt alone
+        # can exceed CHAT_HISTORY_MAX_TOKENS and would silently drop all history.
+        history = _fetch_history_by_token_budget(db, sess.id)
 
         # If name/email provided in this request, upsert lead
         if (chat_data.name and chat_data.name.strip()) or chat_data.email:
