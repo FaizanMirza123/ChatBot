@@ -369,6 +369,12 @@ class RAGService:
             final_prompt = system_prompt
             if behavior_instructions:
                 final_prompt += "\n\n" + "\n".join(behavior_instructions)
+            if history:
+                final_prompt += (
+                    "\n\nCRITICAL OVERRIDE: You are mid-conversation — chat history is shown above. "
+                    "Do NOT greet the user. Do NOT introduce yourself or the company. "
+                    "Simply continue the conversation naturally from where it left off."
+                )
             messages: list[dict] = [{"role": "system", "content": final_prompt}]
             if history:
                 messages.extend(history)
@@ -405,6 +411,16 @@ class RAGService:
         )
         if behavior_instructions:
             rag_system_prompt += "\n" + "\n".join(behavior_instructions)
+
+        # If there is existing conversation history, explicitly prevent re-greeting.
+        # The system prompt instructs the bot to greet on short messages, which causes
+        # it to reset mid-conversation on short replies like "yup", "yes", "ok", etc.
+        if history:
+            rag_system_prompt += (
+                "\n\nCRITICAL OVERRIDE: You are mid-conversation — chat history is shown above. "
+                "Do NOT greet the user. Do NOT introduce yourself or the company. "
+                "Simply continue the conversation naturally from where it left off."
+            )
 
         messages = [{"role": "system", "content": rag_system_prompt}]
         if history:
