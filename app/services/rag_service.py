@@ -331,113 +331,64 @@ class RAGService:
                                 )
             return q
 
-        q = contextualize_query(query, history)
+        # Use contextualized query for KB/FAQ search only — send original query to OpenAI
+        search_q = contextualize_query(query, history)
 
-        # ALWAYS search FAQs and Knowledge Base - NO RESTRICTIONS
-        faq_results = self.search_faqs(db, q)
-        print(f"FAQ search returned {len(faq_results)} results (ALL FAQs included)")
-        
-        # ALWAYS search knowledge base - NO RESTRICTIONS
-        kb_results = self.search_knowledge_base(q, top_k=10)  # Get more results from multiple files
-        print(f"KB search returned {len(kb_results)} results from knowledge base")
-        
-        # Combine FAQ and KB results - include ALL results
+        faq_results = self.search_faqs(db, search_q)
+        kb_results = self.search_knowledge_base(search_q, top_k=5)
+
         all_results = faq_results + kb_results
-        # Sort by distance (lower is better) - best matches first
         all_results.sort(key=lambda x: x[1])
-        
-        print(f"Total results (FAQ + KB): {len(all_results)} - NO RESTRICTIONS")
-        
+        # Cap total context to top 6 most relevant results for speed
+        all_results = all_results[:6]
+
+        client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
+
         if not all_results:
-            # No KB or FAQ results, but still use system prompt - NO RESTRICTIONS
             messages: list[dict] = [{"role": "system", "content": system_prompt}]
             if history:
                 messages.extend(history)
-            messages.append({"role": "user", "content": q})
-
-            client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
+            messages.append({"role": "user", "content": query})
             response = client.chat.completions.create(
                 model=messaging_config.get('ai_model', settings.OPENAI_MODEL),
                 temperature=0.3,
-                max_tokens=800,
+                max_tokens=500,
                 messages=messages,
             )
             return response.choices[0].message.content, False
 
-        # Build KB context - NO RESTRICTIONS, include ALL results
-        # Accept ALL results regardless of distance - let the AI decide relevance
         context_parts: list[str] = []
-        seen_documents = set()  # Track which documents we've included to avoid duplicates
-        
-        for doc_text, score, metadata in all_results:
-            # Include ALL results - NO distance threshold restrictions
-            source_key = None
-            if metadata.get('source') == 'faq':
-                source_key = f"faq_{metadata.get('faq_id')}"
-                context_parts.append(f"FAQ: {doc_text}")
-            else:
-                doc_id = metadata.get('document_id')
-                chunk_idx = metadata.get('chunk_index', 0)
-                source_key = f"doc_{doc_id}_chunk_{chunk_idx}"
-                filename = metadata.get('filename', 'document')
-                context_parts.append(f"From {filename}: {doc_text}")
-            
-            # Track to avoid exact duplicates
-            if source_key:
-                seen_documents.add(source_key)
-        
-        print(f"Including {len(context_parts)} context parts in response (NO distance restrictions)")
-
-        if not context_parts:
-            # No context parts but still use system prompt - NO RESTRICTIONS
-            messages: list[dict] = [{"role": "system", "content": system_prompt}]
-            if history:
-                messages.extend(history)
-            messages.append({"role": "user", "content": q})
-
-            client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
-            response = client.chat.completions.create(
-                model=messaging_config.get('ai_model', settings.OPENAI_MODEL),
-                temperature=0.3,
-                max_tokens=800,
-                messages=messages,
-            )
-            return response.choices[0].message.content, False
-
-        context = "\n\n".join(context_parts)
-        
-        # Count unique sources (documents and FAQs) for logging
         unique_docs = set()
         faq_count = 0
-        doc_chunk_count = 0
-        for _, _, metadata in all_results:
+        for doc_text, score, metadata in all_results:
             if metadata.get('source') == 'faq':
                 faq_count += 1
+                context_parts.append(f"FAQ: {doc_text}")
             else:
                 doc_id = metadata.get('document_id')
                 if doc_id:
                     unique_docs.add(doc_id)
-                doc_chunk_count += 1
-        
-        # Include system prompt and knowledge base - NO RESTRICTIONS
-        # System prompt and KB are both important, let the AI use both fully
+                filename = metadata.get('filename', 'document')
+                context_parts.append(f"From {filename}: {doc_text}")
+
+        context = "\n\n".join(context_parts)
+
         rag_system_prompt = (
             f"{system_prompt}\n\n"
-            f"===== KNOWLEDGE BASE INFORMATION (from {len(unique_docs)} document(s) and {faq_count} FAQ(s), total {len(all_results)} chunks) =====\n"
+            f"===== KNOWLEDGE BASE =====\n"
             f"{context}\n"
-            f"===== END OF KNOWLEDGE BASE INFORMATION =====\n"
+            f"===== END KNOWLEDGE BASE =====\n"
         )
 
         messages = [{"role": "system", "content": rag_system_prompt}]
         if history:
             messages.extend(history)
-        messages.append({"role": "user", "content": q})
+        messages.append({"role": "user", "content": query})
 
-        client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
         response = client.chat.completions.create(
             model=messaging_config.get('ai_model', settings.OPENAI_MODEL),
             temperature=0.3,
-            max_tokens=800,
+            max_tokens=500,
             messages=messages,
         )
         return response.choices[0].message.content, True
