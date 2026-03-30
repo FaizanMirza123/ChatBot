@@ -41,35 +41,41 @@
     }
     
     .cb-starter-questions{
-      padding:16px;border-bottom:1px solid var(--cb-gray-200);
-      background:#f0f9ff !important;
-      border:2px solid #3b82f6 !important;
-      display:block !important;
       flex:1;overflow-y:auto;
       -webkit-overflow-scrolling:touch;
-      max-height:calc(100vh - 300px);
+      display:flex;flex-direction:column;
+      background:var(--cb-gray-50);
     }
     .cb-starter-title{
-      font-size:14px;font-weight:600;color:var(--cb-gray-700);
-      margin-bottom:12px;
+      font-size:18px;font-weight:700;color:var(--cb-gray-800);
+      margin-bottom:4px;line-height:1.3;
     }
     .cb-starter-grid{
-      display:grid;grid-template-columns:1fr 1fr;gap:8px;
-      flex:1;overflow-y:auto;
-      -webkit-overflow-scrolling:touch;
+      display:flex;flex-direction:column;gap:8px;
+      padding:16px;
     }
     .cb-starter-question{
-      background:#fff;border:1px solid var(--cb-gray-300);
-      border-radius:8px;padding:8px 12px;font-size:13px;
+      background:#fff;border:1px solid var(--cb-gray-200);
+      border-radius:12px;padding:14px 16px;font-size:14px;
       color:var(--cb-gray-700);cursor:pointer;transition:all 0.2s ease;
       text-align:left;word-wrap:break-word;
-      min-height:40px;display:flex;align-items:center;
+      display:flex;align-items:center;justify-content:space-between;
+      gap:12px;box-shadow:var(--cb-shadow-sm);font-weight:500;
+      line-height:1.4;
     }
     .cb-starter-question:hover{
       background:var(--cb-primary);color:#fff;border-color:var(--cb-primary);
+      box-shadow:var(--cb-shadow-md);transform:translateY(-1px);
     }
     .cb-starter-question:active{
-      transform:scale(0.98);
+      transform:translateY(0);
+    }
+    .cb-starter-arrow{
+      flex-shrink:0;opacity:0.4;transition:opacity 0.2s,transform 0.2s;
+      font-size:16px;
+    }
+    .cb-starter-question:hover .cb-starter-arrow{
+      opacity:1;transform:translateX(3px);
     }
     .cb-floating-button:hover{
       transform:scale(1.1);
@@ -293,8 +299,8 @@
       .cb-panel.left{left:24px;right:24px}
       .cb-message.user{margin-left:10%}
       .cb-message.assistant{margin-right:10%}
-      .cb-starter-grid{grid-template-columns:1fr;gap:12px}
-      .cb-questions-container{grid-template-columns:1fr;gap:12px}
+      .cb-starter-grid{gap:8px}
+      .cb-questions-container{grid-template-columns:1fr;gap:8px}
       .cb-form{max-height:calc(100vh - 250px)}
       .cb-starter-questions{max-height:calc(100vh - 250px)}
     }
@@ -523,9 +529,9 @@
     // Starter questions screen (shown after form)
     const starterScreen=el('div','cb-starter-screen');
     starterScreen.style.cssText=`
-      display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
-      padding:20px;text-align:center;flex:1;min-height:0;
+      display:flex;flex-direction:column;flex:1;min-height:0;
       overflow-y:auto;-webkit-overflow-scrolling:touch;
+      background:var(--cb-gray-50);
     `;
   
   // Chat wrapper (shown after question selection)
@@ -855,89 +861,57 @@
       return;
     }
     
-    // Create title
+    // Create header section
+    const headerSection = el('div', 'cb-section');
+    headerSection.style.cssText = `
+      padding: 20px 24px 16px; background: var(--cb-gray-50);
+      border-bottom: 1px solid var(--cb-gray-200); flex-shrink: 0;
+    `;
     const title = el('div', 'cb-starter-title');
     title.textContent = 'How can I help you today?';
-    title.style.cssText = `
-      font-size: 24px; font-weight: 700; color: var(--cb-gray-800);
-      margin-bottom: 8px;
-    `;
-    
-    // Create subtitle
-    const subtitle = el('div', 'cb-starter-subtitle');
-    subtitle.textContent = 'Choose a question to get started:';
-    subtitle.style.cssText = `
-      font-size: 16px; color: var(--cb-gray-600);
-      margin-bottom: 32px;
-    `;
-    
-    // Create questions container
-    const questionsContainer = el('div', 'cb-questions-container');
-    questionsContainer.style.cssText = `
-      display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
-      width: 100%; max-width: 500px; flex-shrink: 0;
-      flex: 1; overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-      padding-right: 8px;
-    `;
-    
-    // Create question buttons
-    questions.forEach((question, index) => {
-      const btn = el('button', 'cb-question-btn');
-      btn.textContent = question;
-      btn.style.cssText = `
-        padding: 16px 20px; background: #fff; border: 2px solid var(--cb-primary);
-        border-radius: 12px; cursor: pointer; text-align: left;
-        font-size: 14px; color: var(--cb-gray-700); transition: all 0.2s ease;
-        box-shadow: var(--cb-shadow-sm); min-height: 60px;
-        display: flex; align-items: center; justify-content: center;
-      `;
-      
-      // Simple hover effects (no transform)
-      btn.addEventListener('mouseenter', () => {
-        btn.style.background = 'var(--cb-primary)';
-        btn.style.color = '#fff';
-        btn.style.boxShadow = 'var(--cb-shadow-md)';
-      });
-      
-      btn.addEventListener('mouseleave', () => {
-        btn.style.background = '#fff';
-        btn.style.color = 'var(--cb-gray-700)';
-        btn.style.boxShadow = 'var(--cb-shadow-sm)';
-      });
-      
-      // Click handler
+    const subtitle = el('div', 'cb-note');
+    subtitle.textContent = 'Choose a question below or type your own.';
+    subtitle.style.cssText = `font-size:13px;color:var(--cb-gray-500);margin:4px 0 0;`;
+    headerSection.appendChild(title);
+    headerSection.appendChild(subtitle);
+
+    // Create questions list
+    const questionsContainer = el('div', 'cb-starter-grid');
+
+    questions.forEach((question) => {
+      const btn = el('button', 'cb-starter-question');
+      const text = el('span', null, question);
+      const arrow = el('span', 'cb-starter-arrow', '→');
+      btn.appendChild(text);
+      btn.appendChild(arrow);
+
       btn.addEventListener('click', () => {
-        console.log('Question clicked:', question);
-        // Mark that user has seen starter questions
         localStorage.setItem('chatbot_starter_seen', 'true');
-        // Send question and show chat
         sendQuestionAndShowChat(question);
       });
-      
+
       questionsContainer.appendChild(btn);
     });
-    
-    // Add skip button
+
+    // Skip button
     const skipBtn = el('button', 'cb-skip-btn');
-    skipBtn.textContent = 'Skip and start chatting';
+    skipBtn.textContent = 'Skip — start chatting';
     skipBtn.style.cssText = `
-      margin-top: 24px; padding: 12px 24px; background: transparent;
-      border: 1px solid var(--cb-gray-300); border-radius: 8px;
-      cursor: pointer; font-size: 14px; color: var(--cb-gray-600);
-      transition: all 0.2s ease;
+      display:block;width:100%;padding:14px;background:transparent;
+      border:none;border-top:1px solid var(--cb-gray-200);
+      cursor:pointer;font-size:13px;color:var(--cb-gray-500);
+      transition:all 0.2s ease;margin-top:auto;flex-shrink:0;
     `;
-    
+    skipBtn.addEventListener('mouseenter', () => { skipBtn.style.color = 'var(--cb-gray-800)'; skipBtn.style.background = 'var(--cb-gray-100)'; });
+    skipBtn.addEventListener('mouseleave', () => { skipBtn.style.color = 'var(--cb-gray-500)'; skipBtn.style.background = 'transparent'; });
+
     skipBtn.addEventListener('click', () => {
-      console.log('Skip clicked, showing chat');
-      // Mark that user has seen starter questions
       localStorage.setItem('chatbot_starter_seen', 'true');
       showChatScreen();
     });
-    
+
     // Assemble the screen
-    starterScreen.appendChild(title);
-    starterScreen.appendChild(subtitle);
+    starterScreen.appendChild(headerSection);
     starterScreen.appendChild(questionsContainer);
     starterScreen.appendChild(skipBtn);
     
